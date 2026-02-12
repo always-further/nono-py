@@ -1,6 +1,6 @@
 """Pytest configuration and fixtures."""
 
-import pytest
+import pytest  # ty:ignore[unresolved-import]  # noqa: F401
 
 
 @pytest.fixture

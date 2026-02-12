@@ -2,9 +2,9 @@
 
 import sys
 
-import pytest
+import pytest  # ty:ignore[unresolved-import]  # noqa: F401
 
-from nono_py import is_supported, support_info, SupportInfo
+from nono_py import SupportInfo, is_supported, support_info
 
 
 class TestIsSupported:

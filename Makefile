@@ -26,27 +26,27 @@ help:
 
 # Build in debug mode
 build:
-	maturin build
+	uv run maturin build
 
 # Build in release mode
 build-release:
-	maturin build --release
+	uv run maturin build --release
 
 # Development install (editable)
 dev:
-	maturin develop
+	uv run maturin develop
 
 # Install the package
 install:
-	maturin develop --release
+	uv run maturin develop --release
 
 # Run tests (rebuilds first)
 test: dev
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 # Run tests without rebuilding
 test-quick:
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 # Run Rust linter
 lint-rust:
@@ -54,7 +54,7 @@ lint-rust:
 
 # Run Python type checker
 lint-python:
-	mypy python/nono_py
+	uv run mypy python/nono_py
 
 # Run all linters
 lint: lint-rust lint-python
@@ -63,10 +63,10 @@ lint: lint-rust lint-python
 fmt-rust:
 	cargo fmt
 
-# Format Python code (requires ruff)
+# Format Python code
 fmt-python:
-	-ruff format python/ tests/
-	-ruff check --fix python/ tests/
+	-uv run ruff format python/ tests/
+	-uv run ruff check --fix python/ tests/
 
 # Format all code
 fmt: fmt-rust fmt-python
@@ -75,10 +75,10 @@ fmt: fmt-rust fmt-python
 fmt-check-rust:
 	cargo fmt --check
 
-# Check Python formatting (requires ruff)
+# Check Python formatting
 fmt-check-python:
-	-ruff format --check python/ tests/
-	-ruff check python/ tests/
+	-uv run ruff format --check python/ tests/
+	-uv run ruff check python/ tests/
 
 # Check all formatting
 fmt-check: fmt-check-rust fmt-check-python

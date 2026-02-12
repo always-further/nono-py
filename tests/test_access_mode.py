@@ -1,6 +1,6 @@
 """Tests for AccessMode enum."""
 
-import pytest
+import pytest  # ty:ignore[unresolved-import]  # noqa: F401
 
 from nono_py import AccessMode
 
@@ -46,7 +46,7 @@ class TestAccessMode:
     def test_equality(self) -> None:
         """Test equality comparison."""
         assert AccessMode.READ == AccessMode.READ
-        assert not (AccessMode.READ == AccessMode.WRITE)
+        assert AccessMode.READ != AccessMode.WRITE
 
     def test_usable_in_set(self) -> None:
         """Test that AccessMode values can be added to sets."""

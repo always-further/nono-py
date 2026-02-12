@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 
-import pytest
+import pytest  # ty:ignore[unresolved-import]  # noqa: F401
 
 from nono_py import AccessMode, CapabilitySet, SandboxState
 

@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-import pytest
+import pytest  # ty:ignore[unresolved-import]  # noqa: F401
 
 from nono_py import AccessMode, CapabilitySet
 
@@ -86,15 +86,20 @@ class TestCapabilitySetPaths:
 
     def test_path_covered(self) -> None:
         """Test path_covered method."""
-        caps = CapabilitySet()
-        caps.allow_path("/tmp", AccessMode.READ)
+        # Use a temp directory to avoid symlink issues (e.g., /tmp -> /private/tmp on macOS)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            caps = CapabilitySet()
+            caps.allow_path(tmpdir, AccessMode.READ)
 
-        # /tmp itself should be covered
-        assert caps.path_covered("/tmp")
-        # A subdirectory should be covered
-        assert caps.path_covered("/tmp/subdir")
-        # An unrelated path should not be covered
-        assert not caps.path_covered("/var")
+            # Get the resolved path from the capability
+            resolved = caps.fs_capabilities()[0].resolved
+
+            # The resolved path itself should be covered
+            assert caps.path_covered(resolved)
+            # A subdirectory should be covered
+            assert caps.path_covered(os.path.join(resolved, "subdir"))
+            # An unrelated path should not be covered
+            assert not caps.path_covered("/var")
 
     def test_multiple_paths(self) -> None:
         """Test adding multiple paths."""

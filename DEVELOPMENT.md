@@ -5,8 +5,8 @@ This guide explains how to set up and develop nono-py, including working with a 
 ## Prerequisites
 
 - **Rust toolchain**: Install via [rustup](https://rustup.rs/)
-- **Python 3.9+**: With pip
-- **maturin**: `pip install maturin`
+- **Python 3.9+**
+- **uv**: Install via [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/)
 
 ## Project Structure
 
@@ -78,28 +78,20 @@ git clone https://github.com/always-further/nono.git
 git clone https://github.com/always-further/nono-py.git
 ```
 
-### 2. Create Virtual Environment
+### 2. Install Dependencies
 
 ```bash
 cd nono-py
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# or: .venv\Scripts\activate  # Windows
+uv sync
 ```
 
-### 3. Install Development Dependencies
+This creates a virtual environment and installs all dev dependencies (maturin, pytest, mypy, ruff).
 
-```bash
-pip install maturin pytest mypy ruff
-# or
-pip install -e ".[dev]"
-```
-
-### 4. Build and Install
+### 3. Build and Install
 
 ```bash
 # Development build (debug mode, faster compilation)
-maturin develop
+uv run maturin develop
 
 # Or use make
 make dev
@@ -111,15 +103,15 @@ make dev
 
 1. Edit Rust code in `src/lib.rs`
 2. Edit Python code in `python/nono_py/`
-3. Rebuild: `maturin develop`
-4. Run tests: `pytest tests/ -v`
+3. Rebuild: `uv run maturin develop`
+4. Run tests: `uv run pytest tests/ -v`
 
 ### Making Changes to nono Library
 
 When you need to modify the underlying nono library:
 
 1. Make changes in `../nono/crates/nono/`
-2. Rebuild nono-py: `maturin develop`
+2. Rebuild nono-py: `uv run maturin develop`
    - maturin automatically picks up changes in the dependency
 3. Test your changes
 
@@ -134,7 +126,7 @@ cargo watch -x check
 
 # Terminal 2: Rebuild and test nono-py
 cd ~/dev/nono-py
-maturin develop && pytest tests/ -v
+uv run maturin develop && uv run pytest tests/ -v
 ```
 
 ## Build Commands
@@ -164,20 +156,20 @@ make clean
 ### Run All Tests
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ### Run Specific Test File
 
 ```bash
-pytest tests/test_capability_set.py -v
+uv run pytest tests/test_capability_set.py -v
 ```
 
 ### Run with Coverage
 
 ```bash
-pip install pytest-cov
-pytest tests/ --cov=nono_py --cov-report=html
+uv add --dev pytest-cov
+uv run pytest tests/ --cov=nono_py --cov-report=html
 ```
 
 ## Linting and Formatting
@@ -199,19 +191,19 @@ cargo clippy -- -D warnings
 
 ```bash
 # Check formatting
-ruff format --check python/ tests/
+uv run ruff format --check python/ tests/
 
 # Auto-format
-ruff format python/ tests/
+uv run ruff format python/ tests/
 
 # Run linter
-ruff check python/ tests/
+uv run ruff check python/ tests/
 
 # Auto-fix linter issues
-ruff check --fix python/ tests/
+uv run ruff check --fix python/ tests/
 
 # Type checking
-mypy python/nono_py
+uv run mypy python/nono_py
 ```
 
 ## Switching Between Local and Published nono
@@ -268,7 +260,7 @@ If the nono library API changed:
 1. Check `../nono/crates/nono/src/lib.rs` for the new API
 2. Update `src/lib.rs` in nono-py to match
 3. Update type stubs in `python/nono_py/_nono_py.pyi`
-4. Rebuild: `maturin develop`
+4. Rebuild: `uv run maturin develop`
 
 ### Import Errors in Python
 
@@ -276,10 +268,10 @@ If you get `ModuleNotFoundError: No module named 'nono_py._nono_py'`:
 
 ```bash
 # Ensure you've built and installed
-maturin develop
+uv run maturin develop
 
 # Verify installation
-python -c "from nono_py import CapabilitySet; print('OK')"
+uv run python -c "from nono_py import CapabilitySet; print('OK')"
 ```
 
 ### Type Checking Errors
@@ -289,7 +281,7 @@ If mypy complains about missing stubs:
 ```bash
 # The _nono_py.pyi file provides type information
 # Ensure it's up to date with the Rust API
-mypy python/nono_py --ignore-missing-imports
+uv run mypy python/nono_py --ignore-missing-imports
 ```
 
 ## Release Process
