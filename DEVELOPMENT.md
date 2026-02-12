@@ -222,7 +222,7 @@ The CI workflows checkout nono as a sibling directory:
 
 ```yaml
 - name: Checkout nono library
-  uses: actions/checkout@v4
+  uses: actions/checkout@v6.0.2
   with:
     repository: always-further/nono
     path: nono
