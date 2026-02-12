@@ -1,0 +1,39 @@
+[build-system]
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[project]
+name = "nono-py"
+version = "0.1.0"
+description = "Python bindings for nono capability-based sandboxing"
+readme = "README.md"
+authors = [{ name = "Luke Hinds", email = "lukehinds@gmail.com" }]
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+keywords = ["sandbox", "security", "capability", "landlock", "seatbelt"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "mypy>=1.10"]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "nono_py._nono_py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true

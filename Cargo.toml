@@ -1,0 +1,17 @@
+[package]
+name = "nono-py"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+authors = ["Luke Hinds <lukehinds@gmail.com>"]
+license = "Apache-2.0"
+description = "Python bindings for nono capability-based sandboxing library"
+publish = false
+
+[lib]
+name = "_nono_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+nono = { path = "../nono/crates/nono" }
+pyo3 = { version = "0.23", features = ["extension-module"] }

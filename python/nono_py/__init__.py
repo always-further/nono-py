@@ -1,0 +1,55 @@
+"""nono: Capability-based sandboxing for Python.
+
+This module provides OS-enforced sandboxing using Landlock (Linux) and
+Seatbelt (macOS). Once a sandbox is applied, unauthorized operations are
+structurally impossible.
+
+Example:
+    >>> from nono_py import CapabilitySet, AccessMode, apply
+    >>> caps = CapabilitySet()
+    >>> caps.allow_path("/tmp", AccessMode.READ_WRITE)
+    >>> caps.block_network()
+    >>> apply(caps)  # Irreversible!
+
+Classes:
+    AccessMode: File system access mode (READ, WRITE, READ_WRITE)
+    CapabilitySet: Collection of sandbox permissions
+    CapabilitySource: Origin of a capability grant
+    FsCapability: A filesystem capability grant
+    SandboxState: Serializable snapshot of capabilities
+    SupportInfo: Platform support information
+    QueryContext: Query permissions without applying sandbox
+
+Functions:
+    apply(caps): Apply the sandbox (irreversible)
+    is_supported(): Check if sandboxing is available
+    support_info(): Get platform support details
+"""
+
+from nono_py._nono_py import (
+    AccessMode,
+    CapabilitySet,
+    CapabilitySource,
+    FsCapability,
+    QueryContext,
+    SandboxState,
+    SupportInfo,
+    apply,
+    is_supported,
+    support_info,
+)
+
+__all__ = [
+    "AccessMode",
+    "CapabilitySet",
+    "CapabilitySource",
+    "FsCapability",
+    "QueryContext",
+    "SandboxState",
+    "SupportInfo",
+    "apply",
+    "is_supported",
+    "support_info",
+]
+
+__version__ = "0.1.0"
