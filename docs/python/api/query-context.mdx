@@ -1,0 +1,254 @@
+---
+title: QueryContext
+description: Query permissions without applying the sandbox
+---
+
+`QueryContext` lets you check what operations would be permitted by a capability set without actually applying the sandbox. This is useful for validation, testing, and building permission-checking UIs.
+
+## Constructor
+
+```python
+QueryContext(caps: CapabilitySet)
+```
+
+Create a query context from a capability set.
+
+<ParamField path="caps" type="CapabilitySet" required>
+  The capability set to query against.
+</ParamField>
+
+```python
+from nono_py import CapabilitySet, AccessMode, QueryContext
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.block_network()
+
+ctx = QueryContext(caps)
+```
+
+<Note>
+The context captures a snapshot of the capabilities at creation time. Changes to the original `CapabilitySet` after creating the context are not reflected.
+</Note>
+
+## Methods
+
+### query_path
+
+```python
+query_path(path: str, mode: AccessMode) -> dict
+```
+
+Check if a path operation would be permitted.
+
+<ParamField path="path" type="str" required>
+  Path to check.
+</ParamField>
+
+<ParamField path="mode" type="AccessMode" required>
+  Requested access mode.
+</ParamField>
+
+**Returns:** Dictionary with query result.
+
+#### Allowed Result
+
+When the operation would be permitted:
+
+```python
+{
+    "status": "allowed",
+    "reason": "granted_path",
+    "granted_path": "/private/tmp",
+    "access": "read+write"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `status` | Always `"allowed"` |
+| `reason` | Always `"granted_path"` |
+| `granted_path` | The capability that grants access |
+| `access` | The access level of that capability |
+
+#### Denied Results
+
+When the operation would be blocked:
+
+**Path not granted:**
+```python
+{
+    "status": "denied",
+    "reason": "path_not_granted"
+}
+```
+
+**Insufficient access level:**
+```python
+{
+    "status": "denied",
+    "reason": "insufficient_access",
+    "granted": "read",
+    "requested": "write"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `status` | Always `"denied"` |
+| `reason` | `"path_not_granted"` or `"insufficient_access"` |
+| `granted` | (Only for insufficient_access) The granted access level |
+| `requested` | (Only for insufficient_access) The requested access level |
+
+#### Example
+
+```python
+from nono_py import CapabilitySet, AccessMode, QueryContext
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ)
+
+ctx = QueryContext(caps)
+
+# Allowed: path is covered with sufficient access
+result = ctx.query_path("/tmp/file.txt", AccessMode.READ)
+print(result)
+# {'status': 'allowed', 'reason': 'granted_path',
+#  'granted_path': '/private/tmp', 'access': 'read'}
+
+# Denied: insufficient access
+result = ctx.query_path("/tmp/file.txt", AccessMode.WRITE)
+print(result)
+# {'status': 'denied', 'reason': 'insufficient_access',
+#  'granted': 'read', 'requested': 'write'}
+
+# Denied: path not granted
+result = ctx.query_path("/etc/passwd", AccessMode.READ)
+print(result)
+# {'status': 'denied', 'reason': 'path_not_granted'}
+```
+
+---
+
+### query_network
+
+```python
+query_network() -> dict
+```
+
+Check if network access would be permitted.
+
+**Returns:** Dictionary with query result.
+
+#### Allowed Result
+
+```python
+{
+    "status": "allowed",
+    "reason": "network_allowed"
+}
+```
+
+#### Denied Result
+
+```python
+{
+    "status": "denied",
+    "reason": "network_blocked"
+}
+```
+
+#### Example
+
+```python
+from nono_py import CapabilitySet, QueryContext
+
+# Network allowed by default
+caps = CapabilitySet()
+ctx = QueryContext(caps)
+
+result = ctx.query_network()
+print(result)  # {'status': 'allowed', 'reason': 'network_allowed'}
+
+# Block network
+caps.block_network()
+ctx = QueryContext(caps)
+
+result = ctx.query_network()
+print(result)  # {'status': 'denied', 'reason': 'network_blocked'}
+```
+
+## Use Cases
+
+### Configuration Validation
+
+Validate a capability configuration before deployment:
+
+```python
+def validate_config(caps: CapabilitySet, required_paths: list[tuple[str, AccessMode]]) -> bool:
+    ctx = QueryContext(caps)
+
+    for path, mode in required_paths:
+        result = ctx.query_path(path, mode)
+        if result["status"] == "denied":
+            print(f"Missing permission: {path} ({mode})")
+            return False
+
+    return True
+
+# Check that all required paths are covered
+caps = CapabilitySet()
+caps.allow_path("/data", AccessMode.READ_WRITE)
+
+required = [
+    ("/data/input", AccessMode.READ),
+    ("/data/output", AccessMode.WRITE),
+]
+
+if validate_config(caps, required):
+    apply(caps)
+```
+
+### Permission Checking UI
+
+Build an interactive permission checker:
+
+```python
+def check_operation(ctx: QueryContext, path: str, mode: AccessMode) -> str:
+    result = ctx.query_path(path, mode)
+
+    if result["status"] == "allowed":
+        return f"ALLOWED via {result['granted_path']}"
+    elif result["reason"] == "insufficient_access":
+        return f"DENIED: have {result['granted']}, need {result['requested']}"
+    else:
+        return "DENIED: path not granted"
+```
+
+### Testing Capability Sets
+
+Write tests for your sandbox configuration:
+
+```python
+import pytest
+from nono_py import CapabilitySet, AccessMode, QueryContext
+
+def test_sandbox_config():
+    caps = CapabilitySet()
+    caps.allow_path("/tmp", AccessMode.READ_WRITE)
+    caps.allow_path("/data", AccessMode.READ)
+    caps.block_network()
+
+    ctx = QueryContext(caps)
+
+    # Verify expected permissions
+    assert ctx.query_path("/tmp/file", AccessMode.WRITE)["status"] == "allowed"
+    assert ctx.query_path("/data/input", AccessMode.READ)["status"] == "allowed"
+    assert ctx.query_path("/data/input", AccessMode.WRITE)["status"] == "denied"
+    assert ctx.query_network()["status"] == "denied"
+```
+
+## Related
+
+- [CapabilitySet](/python/api/capability-set) - Build the capability set to query
+- [AccessMode](/python/api/access-mode) - Access modes for queries

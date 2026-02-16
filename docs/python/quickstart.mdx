@@ -1,0 +1,196 @@
+---
+title: Quickstart
+description: Build your first sandboxed Python application
+---
+
+This guide walks through creating a sandboxed Python application step by step.
+
+## Basic Workflow
+
+Every nono application follows the same pattern:
+
+1. **Check support** - Verify sandboxing is available
+2. **Build capabilities** - Define what the process can access
+3. **Apply sandbox** - Lock down the process (irreversible)
+4. **Run application** - Execute your code within the sandbox
+
+## Step 1: Check Platform Support
+
+Always verify sandboxing is available before relying on it:
+
+```python
+from nono_py import is_supported, support_info
+
+if not is_supported():
+    info = support_info()
+    print(f"Sandboxing not available: {info.details}")
+    exit(1)
+```
+
+## Step 2: Build Capabilities
+
+Create a `CapabilitySet` and grant the permissions your application needs:
+
+```python
+from nono_py import CapabilitySet, AccessMode
+
+caps = CapabilitySet()
+
+# Grant directory access (recursive)
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.allow_path("/home/user/data", AccessMode.READ)
+
+# Grant single file access
+caps.allow_file("/etc/hosts", AccessMode.READ)
+
+# Block network access
+caps.block_network()
+```
+
+### Access Modes
+
+| Mode | Description |
+|------|-------------|
+| `AccessMode.READ` | Read-only access |
+| `AccessMode.WRITE` | Write-only access |
+| `AccessMode.READ_WRITE` | Both read and write |
+
+<Warning>
+Only grant the minimum permissions your application needs. Excessive permissions defeat the purpose of sandboxing.
+</Warning>
+
+## Step 3: Apply the Sandbox
+
+Once you've defined capabilities, apply them:
+
+```python
+from nono_py import apply
+
+apply(caps)
+print("Sandbox applied successfully!")
+```
+
+<Warning>
+**This is irreversible.** After `apply()`, there is no way to expand permissions. The sandbox persists for the lifetime of the process and all child processes.
+</Warning>
+
+## Step 4: Run Your Application
+
+After applying the sandbox, your code runs with restricted permissions:
+
+```python
+# This works - /tmp is allowed
+with open("/tmp/output.txt", "w") as f:
+    f.write("Hello from sandbox!")
+
+# This fails - /etc/passwd is not allowed
+try:
+    with open("/etc/passwd", "r") as f:
+        print(f.read())
+except PermissionError:
+    print("Access denied (expected)")
+```
+
+## Complete Example
+
+Here's a complete sandboxed application:
+
+```python
+#!/usr/bin/env python3
+"""Example sandboxed application."""
+
+from nono_py import (
+    CapabilitySet,
+    AccessMode,
+    apply,
+    is_supported,
+    support_info,
+)
+
+
+def main():
+    # Check platform support
+    if not is_supported():
+        info = support_info()
+        print(f"Error: {info.details}")
+        return 1
+
+    # Build capabilities
+    caps = CapabilitySet()
+    caps.allow_path("/tmp", AccessMode.READ_WRITE)
+    caps.block_network()
+
+    # Show what we're granting
+    print("Capabilities:")
+    print(caps.summary())
+
+    # Apply sandbox
+    apply(caps)
+    print("\nSandbox applied!\n")
+
+    # Run sandboxed code
+    test_file = "/tmp/nono_test.txt"
+
+    # Write to allowed path
+    with open(test_file, "w") as f:
+        f.write("Hello from sandbox!")
+    print(f"Wrote to {test_file}")
+
+    # Read from allowed path
+    with open(test_file, "r") as f:
+        content = f.read()
+    print(f"Read: {content}")
+
+    # Try to access disallowed path
+    try:
+        with open("/etc/passwd", "r") as f:
+            f.read()
+    except PermissionError:
+        print("Blocked access to /etc/passwd (expected)")
+
+    return 0
+
+
+if __name__ == "__main__":
+    exit(main())
+```
+
+## Query Without Applying
+
+Use `QueryContext` to check permissions without applying the sandbox:
+
+```python
+from nono_py import CapabilitySet, AccessMode, QueryContext
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ)
+
+# Create query context
+ctx = QueryContext(caps)
+
+# Check if operations would be allowed
+result = ctx.query_path("/tmp/file.txt", AccessMode.READ)
+print(result)  # {'status': 'allowed', 'reason': 'granted_path', ...}
+
+result = ctx.query_path("/etc/passwd", AccessMode.READ)
+print(result)  # {'status': 'denied', 'reason': 'path_not_granted'}
+
+result = ctx.query_network()
+print(result)  # {'status': 'allowed', 'reason': 'network_allowed'}
+```
+
+This is useful for:
+- Validating configurations before deployment
+- Building permission-checking UIs
+- Testing capability sets
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="book" href="/python/api/capability-set">
+    Full documentation for all classes and functions
+  </Card>
+  <Card title="Examples" icon="lightbulb" href="/python/examples">
+    Real-world usage patterns and recipes
+  </Card>
+</CardGroup>

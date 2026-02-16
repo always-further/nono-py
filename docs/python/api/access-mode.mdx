@@ -1,0 +1,112 @@
+---
+title: AccessMode
+description: File system access mode enum
+---
+
+`AccessMode` defines the type of access granted to a path. It's used with `CapabilitySet.allow_path()` and `CapabilitySet.allow_file()`.
+
+## Values
+
+```python
+from nono_py import AccessMode
+
+AccessMode.READ        # Read-only access
+AccessMode.WRITE       # Write-only access
+AccessMode.READ_WRITE  # Both read and write access
+```
+
+| Value | Description |
+|-------|-------------|
+| `READ` | Read-only access. Can open files for reading, list directories. |
+| `WRITE` | Write-only access. Can create, modify, and delete files. |
+| `READ_WRITE` | Full access. Combines READ and WRITE permissions. |
+
+## Usage
+
+### Basic Usage
+
+```python
+from nono_py import CapabilitySet, AccessMode
+
+caps = CapabilitySet()
+
+# Read-only: can read files but not modify
+caps.allow_path("/etc", AccessMode.READ)
+
+# Write-only: can create/modify but not read existing content
+caps.allow_path("/var/log/myapp", AccessMode.WRITE)
+
+# Full access: read and write
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+```
+
+### With Query Context
+
+```python
+from nono_py import CapabilitySet, AccessMode, QueryContext
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ)
+
+ctx = QueryContext(caps)
+
+# Check read access
+result = ctx.query_path("/tmp/file.txt", AccessMode.READ)
+print(result["status"])  # "allowed"
+
+# Check write access (not granted)
+result = ctx.query_path("/tmp/file.txt", AccessMode.WRITE)
+print(result["status"])  # "denied"
+print(result["reason"])  # "insufficient_access"
+```
+
+## Access Level Hierarchy
+
+`READ_WRITE` is the highest access level and covers both `READ` and `WRITE`:
+
+| Granted | Requested READ | Requested WRITE | Requested READ_WRITE |
+|---------|----------------|-----------------|----------------------|
+| `READ` | Allowed | Denied | Denied |
+| `WRITE` | Denied | Allowed | Denied |
+| `READ_WRITE` | Allowed | Allowed | Allowed |
+
+## String Representation
+
+```python
+from nono_py import AccessMode
+
+print(str(AccessMode.READ))        # "read"
+print(str(AccessMode.WRITE))       # "write"
+print(str(AccessMode.READ_WRITE))  # "read+write"
+
+print(repr(AccessMode.READ))       # "AccessMode.READ"
+```
+
+## Comparison and Hashing
+
+`AccessMode` values are hashable and can be used as dictionary keys or in sets:
+
+```python
+from nono_py import AccessMode
+
+# Use as dict keys
+permissions = {
+    AccessMode.READ: "r",
+    AccessMode.WRITE: "w",
+    AccessMode.READ_WRITE: "rw",
+}
+
+# Use in sets
+allowed_modes = {AccessMode.READ, AccessMode.READ_WRITE}
+print(AccessMode.READ in allowed_modes)  # True
+
+# Equality comparison
+print(AccessMode.READ == AccessMode.READ)   # True
+print(AccessMode.READ == AccessMode.WRITE)  # False
+```
+
+## Related
+
+- [CapabilitySet](/python/api/capability-set) - Use AccessMode when granting permissions
+- [QueryContext](/python/api/query-context) - Use AccessMode when checking permissions
+- [FsCapability](/python/api/fs-capability) - Contains the access mode for a capability

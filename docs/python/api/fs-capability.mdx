@@ -1,0 +1,166 @@
+---
+title: FsCapability
+description: Filesystem capability details
+---
+
+`FsCapability` represents a single filesystem permission grant. It's a read-only view returned by `CapabilitySet.fs_capabilities()`.
+
+<Note>
+You don't create `FsCapability` objects directly. They're created internally when you call `allow_path()` or `allow_file()` on a `CapabilitySet`.
+</Note>
+
+## Properties
+
+### original
+
+```python
+@property
+original: str
+```
+
+The original path as specified by the user.
+
+```python
+from nono_py import CapabilitySet, AccessMode
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ)
+
+cap = caps.fs_capabilities()[0]
+print(cap.original)  # "/tmp"
+```
+
+---
+
+### resolved
+
+```python
+@property
+resolved: str
+```
+
+The canonicalized absolute path after resolving symlinks.
+
+```python
+cap = caps.fs_capabilities()[0]
+print(cap.resolved)  # "/private/tmp" (on macOS, /tmp -> /private/tmp)
+```
+
+<Note>
+On macOS, common paths like `/tmp`, `/var`, and `/etc` are symlinks to `/private/tmp`, `/private/var`, and `/private/etc` respectively.
+</Note>
+
+---
+
+### access
+
+```python
+@property
+access: AccessMode
+```
+
+The access mode granted for this path.
+
+```python
+cap = caps.fs_capabilities()[0]
+print(cap.access)  # AccessMode.READ
+```
+
+---
+
+### is_file
+
+```python
+@property
+is_file: bool
+```
+
+`True` if this capability grants access to a single file, `False` for a directory (recursive access).
+
+```python
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ)
+caps.allow_file("/etc/hosts", AccessMode.READ)
+
+for cap in caps.fs_capabilities():
+    kind = "file" if cap.is_file else "directory"
+    print(f"{cap.resolved}: {kind}")
+# /private/tmp: directory
+# /private/etc/hosts: file
+```
+
+---
+
+### source
+
+```python
+@property
+source: CapabilitySource
+```
+
+The origin of this capability (user, group, or system).
+
+```python
+cap = caps.fs_capabilities()[0]
+print(cap.source)  # CapabilitySource(user)
+```
+
+See [CapabilitySource](/python/api/capability-source) for details.
+
+## String Representation
+
+```python
+cap = caps.fs_capabilities()[0]
+
+print(str(cap))   # "/private/tmp (read, directory)"
+print(repr(cap))  # "FsCapability(path='/private/tmp', access=read, is_file=False)"
+```
+
+## Example: Listing Capabilities
+
+```python
+from nono_py import CapabilitySet, AccessMode
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.allow_path("/data", AccessMode.READ)
+caps.allow_file("/etc/hosts", AccessMode.READ)
+caps.allow_file("/var/log/app.log", AccessMode.WRITE)
+
+print("Filesystem Capabilities:")
+print("-" * 60)
+
+for cap in caps.fs_capabilities():
+    kind = "file" if cap.is_file else "dir "
+    print(f"  [{kind}] {cap.resolved}")
+    print(f"         access: {cap.access}")
+    print(f"         source: {cap.source}")
+    print()
+```
+
+Output:
+```
+Filesystem Capabilities:
+------------------------------------------------------------
+  [dir ] /private/tmp
+         access: AccessMode.READ_WRITE
+         source: CapabilitySource(user)
+
+  [dir ] /data
+         access: AccessMode.READ
+         source: CapabilitySource(user)
+
+  [file] /private/etc/hosts
+         access: AccessMode.READ
+         source: CapabilitySource(user)
+
+  [file] /private/var/log/app.log
+         access: AccessMode.WRITE
+         source: CapabilitySource(user)
+```
+
+## Related
+
+- [CapabilitySet.fs_capabilities()](/python/api/capability-set#fs_capabilities) - Get all capabilities
+- [CapabilitySource](/python/api/capability-source) - Capability origin
+- [AccessMode](/python/api/access-mode) - Access modes

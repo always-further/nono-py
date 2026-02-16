@@ -1,0 +1,200 @@
+---
+title: Module Functions
+description: Top-level functions in nono_py
+---
+
+The `nono_py` module provides three top-level functions for applying sandboxes and checking platform support.
+
+## apply
+
+```python
+apply(caps: CapabilitySet) -> None
+```
+
+Apply the sandbox with the given capabilities. **This is irreversible.**
+
+Once called, the current process and all child processes can only access resources granted by the capabilities. There is no way to expand permissions after this call.
+
+<ParamField path="caps" type="CapabilitySet" required>
+  The capability set defining permitted operations.
+</ParamField>
+
+**Raises:**
+- `RuntimeError` - Platform not supported or sandbox initialization failed
+
+### Example
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.block_network()
+
+# After this call, the process is sandboxed
+apply(caps)
+
+# These work:
+with open("/tmp/test.txt", "w") as f:
+    f.write("Hello")
+
+# These fail with PermissionError:
+open("/etc/passwd", "r")
+```
+
+<Warning>
+**No escape hatch.** Once `apply()` succeeds:
+- Permissions cannot be expanded
+- The sandbox persists until process exit
+- All child processes inherit the same restrictions
+- There is no "undo" or "disable" function
+</Warning>
+
+### Error Handling
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply, is_supported
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+
+if not is_supported():
+    print("Warning: sandboxing not available, running without protection")
+else:
+    try:
+        apply(caps)
+        print("Sandbox applied successfully")
+    except RuntimeError as e:
+        print(f"Failed to apply sandbox: {e}")
+        exit(1)
+```
+
+---
+
+## is_supported
+
+```python
+is_supported() -> bool
+```
+
+Check if sandboxing is supported on this platform.
+
+**Returns:** `True` if sandboxing is available.
+
+### Example
+
+```python
+from nono_py import is_supported
+
+if is_supported():
+    print("Sandbox available")
+else:
+    print("Sandbox not available")
+```
+
+### Platform Requirements
+
+| Platform | Requirement |
+|----------|-------------|
+| Linux | Kernel 5.13+ with Landlock enabled |
+| macOS | macOS 10.5+ (always available) |
+| Windows | Not supported (always returns `False`) |
+
+<Tip>
+Use `support_info()` for more detailed information about why sandboxing might not be available.
+</Tip>
+
+---
+
+## support_info
+
+```python
+support_info() -> SupportInfo
+```
+
+Get detailed information about sandbox support on this platform.
+
+**Returns:** `SupportInfo` object with platform details.
+
+### Example
+
+```python
+from nono_py import support_info
+
+info = support_info()
+
+print(f"Platform: {info.platform}")
+print(f"Supported: {info.is_supported}")
+print(f"Details: {info.details}")
+```
+
+Output examples:
+
+**macOS:**
+```
+Platform: macos
+Supported: True
+Details: Seatbelt sandbox available
+```
+
+**Linux with Landlock:**
+```
+Platform: linux
+Supported: True
+Details: Landlock ABI v5 available
+```
+
+**Linux without Landlock:**
+```
+Platform: linux
+Supported: False
+Details: Landlock not available (kernel too old)
+```
+
+### Detailed Platform Check
+
+```python
+from nono_py import support_info
+import sys
+
+def require_sandbox():
+    """Exit if sandboxing is not available."""
+    info = support_info()
+
+    if info.is_supported:
+        return
+
+    print(f"Error: Sandboxing required but not available", file=sys.stderr)
+    print(f"Platform: {info.platform}", file=sys.stderr)
+    print(f"Details: {info.details}", file=sys.stderr)
+
+    if info.platform == "linux":
+        print("\nTo enable Landlock on Linux:", file=sys.stderr)
+        print("  1. Upgrade to kernel 5.13 or later", file=sys.stderr)
+        print("  2. Ensure CONFIG_SECURITY_LANDLOCK=y in kernel config", file=sys.stderr)
+
+    sys.exit(1)
+
+require_sandbox()
+```
+
+## Import
+
+All functions are available from the top-level module:
+
+```python
+from nono_py import apply, is_supported, support_info
+
+# Or import the module
+import nono_py
+
+nono_py.apply(caps)
+nono_py.is_supported()
+nono_py.support_info()
+```
+
+## Related
+
+- [CapabilitySet](/python/api/capability-set) - Build capabilities to pass to `apply()`
+- [SupportInfo](/python/api/support-info) - Returned by `support_info()`
+- [QueryContext](/python/api/query-context) - Check permissions without applying

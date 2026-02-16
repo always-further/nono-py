@@ -1,0 +1,96 @@
+---
+title: CapabilitySource
+description: Origin of a capability grant
+---
+
+`CapabilitySource` tracks where a capability came from. This is useful for debugging, auditing, and understanding how permissions were granted.
+
+## Factory Methods
+
+### user
+
+```python
+@staticmethod
+CapabilitySource.user() -> CapabilitySource
+```
+
+Create a user-sourced capability. This is the default source when you call `allow_path()` or `allow_file()`.
+
+```python
+from nono_py import CapabilitySource
+
+source = CapabilitySource.user()
+print(source)  # "user"
+```
+
+---
+
+### group
+
+```python
+@staticmethod
+CapabilitySource.group(name: str) -> CapabilitySource
+```
+
+Create a group-sourced capability. Used when permissions come from a named policy group.
+
+<ParamField path="name" type="str" required>
+  Name of the policy group (e.g., `"claude-code"`, `"development"`).
+</ParamField>
+
+```python
+source = CapabilitySource.group("claude-code")
+print(source)  # "group(claude-code)"
+```
+
+---
+
+### system
+
+```python
+@staticmethod
+CapabilitySource.system() -> CapabilitySource
+```
+
+Create a system-sourced capability. Used for paths required for basic system operation.
+
+```python
+source = CapabilitySource.system()
+print(source)  # "system"
+```
+
+## String Representation
+
+```python
+from nono_py import CapabilitySource
+
+print(str(CapabilitySource.user()))           # "user"
+print(str(CapabilitySource.group("mygroup"))) # "group(mygroup)"
+print(str(CapabilitySource.system()))         # "system"
+
+print(repr(CapabilitySource.user()))          # "CapabilitySource(user)"
+```
+
+## Usage
+
+The source is attached to each `FsCapability` and can be accessed via the `source` property:
+
+```python
+from nono_py import CapabilitySet, AccessMode
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+
+for cap in caps.fs_capabilities():
+    print(f"{cap.resolved}: {cap.source}")
+# /private/tmp: user
+```
+
+## Source Priority
+
+When deduplicating capabilities with `CapabilitySet.deduplicate()`, user-granted capabilities take priority over system-granted ones. This ensures user intent is preserved.
+
+## Related
+
+- [FsCapability.source](/python/api/fs-capability#source) - Access source on a capability
+- [CapabilitySet.deduplicate()](/python/api/capability-set#deduplicate) - Handles source priority

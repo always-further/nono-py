@@ -1,0 +1,77 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "nono Python SDK",
+  "logo": {
+    "dark": "/assets/nono-py.png",
+    "light": "/assets/nono-py.png"
+  },
+  "favicon": "/assets/nono-py.png",
+  "colors": {
+    "primary": "#3776AB",
+    "light": "#FFD43B",
+    "dark": "#3776AB"
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "nono CLI",
+        "href": "https://docs.nono.sh"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/always-further/nono-py"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Discord",
+      "href": "https://discord.gg/pPcjYzGvbS"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "python/overview",
+              "python/installation",
+              "python/quickstart"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "python/api/capability-set",
+              "python/api/access-mode",
+              "python/api/query-context",
+              "python/api/sandbox-state",
+              "python/api/fs-capability",
+              "python/api/capability-source",
+              "python/api/support-info",
+              "python/api/functions"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "python/examples"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/always-further/nono-py",
+      "discord": "https://discord.gg/pPcjYzGvbS"
+    }
+  }
+}

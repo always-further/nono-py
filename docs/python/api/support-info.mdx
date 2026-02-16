@@ -1,0 +1,106 @@
+---
+title: SupportInfo
+description: Platform support information
+---
+
+`SupportInfo` provides details about sandbox support on the current platform. It's returned by the `support_info()` function.
+
+## Properties
+
+### is_supported
+
+```python
+@property
+is_supported: bool
+```
+
+`True` if sandboxing is available on this platform.
+
+```python
+from nono_py import support_info
+
+info = support_info()
+if info.is_supported:
+    print("Sandbox available")
+else:
+    print("Sandbox not available")
+```
+
+---
+
+### platform
+
+```python
+@property
+platform: str
+```
+
+Platform identifier string.
+
+| Value | Description |
+|-------|-------------|
+| `"linux"` | Linux with Landlock |
+| `"macos"` | macOS with Seatbelt |
+| `"unsupported"` | Platform not supported |
+
+```python
+info = support_info()
+print(info.platform)  # "macos"
+```
+
+---
+
+### details
+
+```python
+@property
+details: str
+```
+
+Human-readable description of the support status.
+
+```python
+info = support_info()
+print(info.details)
+# "Seatbelt sandbox available"
+# or "Landlock ABI v5 available"
+# or "Landlock not available (kernel too old)"
+```
+
+## String Representation
+
+```python
+info = support_info()
+print(repr(info))  # "SupportInfo(supported=True, platform='macos')"
+```
+
+## Example: Platform Check
+
+```python
+from nono_py import support_info, is_supported
+
+def check_platform():
+    info = support_info()
+
+    print(f"Platform: {info.platform}")
+    print(f"Supported: {info.is_supported}")
+    print(f"Details: {info.details}")
+
+    if not info.is_supported:
+        if info.platform == "linux":
+            print("\nLinux detected but Landlock not available.")
+            print("Ensure your kernel is 5.13+ and Landlock is enabled.")
+        elif info.platform == "unsupported":
+            print("\nThis platform is not supported.")
+            print("nono requires Linux or macOS.")
+
+    return info.is_supported
+
+if not check_platform():
+    exit(1)
+```
+
+## Related
+
+- [support_info()](/python/api/functions#support_info) - Get support information
+- [is_supported()](/python/api/functions#is_supported) - Quick boolean check

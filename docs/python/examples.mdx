@@ -1,0 +1,368 @@
+---
+title: Examples
+description: Real-world usage patterns for nono-py
+---
+
+## Basic Sandbox
+
+The simplest possible sandbox - grant access to a single directory:
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply, is_supported
+
+if not is_supported():
+    exit(1)
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+
+apply(caps)
+
+# Now only /tmp is accessible
+with open("/tmp/output.txt", "w") as f:
+    f.write("Hello from sandbox!")
+```
+
+## Data Processing Pipeline
+
+Sandbox a data processing script with separate input/output directories:
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply
+import json
+
+def process_data(input_dir: str, output_dir: str):
+    # Configure sandbox
+    caps = CapabilitySet()
+    caps.allow_path(input_dir, AccessMode.READ)      # Read input
+    caps.allow_path(output_dir, AccessMode.WRITE)    # Write output
+    caps.block_network()                              # No network needed
+
+    # Lock it down
+    apply(caps)
+
+    # Process files (sandbox is now active)
+    for filename in os.listdir(input_dir):
+        input_path = os.path.join(input_dir, filename)
+        output_path = os.path.join(output_dir, f"processed_{filename}")
+
+        with open(input_path, "r") as f:
+            data = json.load(f)
+
+        # Process data...
+        result = transform(data)
+
+        with open(output_path, "w") as f:
+            json.dump(result, f)
+
+process_data("/data/input", "/data/output")
+```
+
+## AI Agent Sandbox
+
+Sandbox an AI agent that generates and executes code:
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply, is_supported
+import subprocess
+import tempfile
+
+def run_agent_code(code: str, work_dir: str):
+    """Execute AI-generated code in a sandbox."""
+
+    if not is_supported():
+        raise RuntimeError("Sandbox required for untrusted code")
+
+    # Create sandbox
+    caps = CapabilitySet()
+    caps.allow_path(work_dir, AccessMode.READ_WRITE)  # Agent workspace
+    caps.allow_path("/usr", AccessMode.READ)          # System binaries
+    caps.allow_path("/lib", AccessMode.READ)          # Libraries
+    caps.block_network()                               # No network access
+
+    apply(caps)
+
+    # Write and execute the code
+    script_path = os.path.join(work_dir, "agent_script.py")
+    with open(script_path, "w") as f:
+        f.write(code)
+
+    result = subprocess.run(
+        ["python", script_path],
+        capture_output=True,
+        text=True,
+        cwd=work_dir
+    )
+
+    return result.stdout, result.stderr
+
+# AI generates some code
+agent_code = """
+import os
+print("Files in workspace:", os.listdir('.'))
+with open('output.txt', 'w') as f:
+    f.write('Agent completed task')
+"""
+
+with tempfile.TemporaryDirectory() as work_dir:
+    stdout, stderr = run_agent_code(agent_code, work_dir)
+    print(stdout)
+```
+
+## Plugin System
+
+Isolate third-party plugins:
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply
+import importlib.util
+
+def load_plugin_sandboxed(plugin_path: str, data_dir: str):
+    """Load and run a plugin with restricted permissions."""
+
+    caps = CapabilitySet()
+    caps.allow_file(plugin_path, AccessMode.READ)    # Read plugin code
+    caps.allow_path(data_dir, AccessMode.READ_WRITE) # Plugin data directory
+    caps.block_network()
+
+    apply(caps)
+
+    # Load the plugin
+    spec = importlib.util.spec_from_file_location("plugin", plugin_path)
+    plugin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(plugin)
+
+    # Run the plugin
+    return plugin.run(data_dir)
+```
+
+## Configuration-Driven Sandbox
+
+Load sandbox configuration from a file:
+
+```python
+from nono_py import CapabilitySet, AccessMode, SandboxState, apply
+import json
+
+def load_sandbox_from_config(config_path: str):
+    """Load and apply sandbox from JSON config."""
+
+    # Config format:
+    # {
+    #   "paths": [
+    #     {"path": "/tmp", "access": "read_write"},
+    #     {"path": "/data", "access": "read"}
+    #   ],
+    #   "network": false
+    # }
+
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    caps = CapabilitySet()
+
+    access_map = {
+        "read": AccessMode.READ,
+        "write": AccessMode.WRITE,
+        "read_write": AccessMode.READ_WRITE,
+    }
+
+    for entry in config.get("paths", []):
+        mode = access_map[entry["access"]]
+        caps.allow_path(entry["path"], mode)
+
+    if not config.get("network", True):
+        caps.block_network()
+
+    apply(caps)
+
+load_sandbox_from_config("sandbox.json")
+```
+
+## Validation Before Apply
+
+Use `QueryContext` to validate a configuration:
+
+```python
+from nono_py import CapabilitySet, AccessMode, QueryContext
+
+def validate_sandbox_config(caps: CapabilitySet, requirements: dict) -> list[str]:
+    """Validate that a sandbox config meets requirements.
+
+    Returns list of error messages (empty if valid).
+    """
+    errors = []
+    ctx = QueryContext(caps)
+
+    # Check required paths
+    for path, mode in requirements.get("paths", []):
+        result = ctx.query_path(path, mode)
+        if result["status"] == "denied":
+            errors.append(f"Missing access: {path} ({mode})")
+
+    # Check network requirement
+    if requirements.get("needs_network", False):
+        result = ctx.query_network()
+        if result["status"] == "denied":
+            errors.append("Network access required but blocked")
+
+    return errors
+
+# Define requirements
+requirements = {
+    "paths": [
+        ("/tmp", AccessMode.READ_WRITE),
+        ("/data/input", AccessMode.READ),
+    ],
+    "needs_network": False,
+}
+
+# Build config
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+# Forgot to add /data/input!
+
+# Validate before applying
+errors = validate_sandbox_config(caps, requirements)
+if errors:
+    print("Configuration errors:")
+    for error in errors:
+        print(f"  - {error}")
+else:
+    apply(caps)
+```
+
+## Graceful Degradation
+
+Handle platforms without sandbox support:
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply, is_supported, support_info
+import warnings
+
+def create_sandbox(caps: CapabilitySet, strict: bool = True):
+    """Apply sandbox with optional strict mode.
+
+    Args:
+        caps: Capabilities to apply
+        strict: If True, fail on unsupported platforms.
+                If False, warn and continue without sandbox.
+    """
+    if not is_supported():
+        info = support_info()
+        msg = f"Sandbox not available: {info.details}"
+
+        if strict:
+            raise RuntimeError(msg)
+        else:
+            warnings.warn(f"{msg}. Running without sandbox protection.")
+            return False
+
+    apply(caps)
+    return True
+
+# Usage
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+
+# Development: warn but continue
+sandboxed = create_sandbox(caps, strict=False)
+
+# Production: fail if no sandbox
+# sandboxed = create_sandbox(caps, strict=True)
+
+if sandboxed:
+    print("Running in sandbox")
+else:
+    print("Running without sandbox (development mode)")
+```
+
+## State Persistence
+
+Save and restore sandbox state:
+
+```python
+from nono_py import CapabilitySet, AccessMode, SandboxState, apply
+import os
+
+STATE_FILE = "/tmp/sandbox_state.json"
+
+def save_sandbox_state(caps: CapabilitySet):
+    """Save sandbox configuration for later use."""
+    state = SandboxState.from_caps(caps)
+    with open(STATE_FILE, "w") as f:
+        f.write(state.to_json())
+    print(f"Saved sandbox state to {STATE_FILE}")
+
+def load_and_apply_sandbox():
+    """Load and apply previously saved sandbox."""
+    with open(STATE_FILE, "r") as f:
+        state = SandboxState.from_json(f.read())
+
+    caps = state.to_caps()
+    print(f"Loaded sandbox with {len(caps.fs_capabilities())} capabilities")
+
+    apply(caps)
+    print("Sandbox applied")
+
+# First run: configure and save
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.allow_path("/data", AccessMode.READ)
+caps.block_network()
+save_sandbox_state(caps)
+
+# Later: load and apply
+# load_and_apply_sandbox()
+```
+
+## Testing Sandbox Configurations
+
+Unit test your sandbox configurations:
+
+```python
+import pytest
+from nono_py import CapabilitySet, AccessMode, QueryContext
+
+class TestSandboxConfig:
+    """Test sandbox configuration for the application."""
+
+    @pytest.fixture
+    def app_sandbox(self):
+        """Standard application sandbox."""
+        caps = CapabilitySet()
+        caps.allow_path("/tmp", AccessMode.READ_WRITE)
+        caps.allow_path("/app/data", AccessMode.READ)
+        caps.allow_file("/etc/app.conf", AccessMode.READ)
+        caps.block_network()
+        return caps
+
+    def test_temp_access(self, app_sandbox):
+        ctx = QueryContext(app_sandbox)
+        result = ctx.query_path("/tmp/work", AccessMode.READ_WRITE)
+        assert result["status"] == "allowed"
+
+    def test_data_read_only(self, app_sandbox):
+        ctx = QueryContext(app_sandbox)
+
+        # Read allowed
+        result = ctx.query_path("/app/data/input.json", AccessMode.READ)
+        assert result["status"] == "allowed"
+
+        # Write denied
+        result = ctx.query_path("/app/data/input.json", AccessMode.WRITE)
+        assert result["status"] == "denied"
+
+    def test_network_blocked(self, app_sandbox):
+        ctx = QueryContext(app_sandbox)
+        result = ctx.query_network()
+        assert result["status"] == "denied"
+
+    def test_sensitive_paths_blocked(self, app_sandbox):
+        ctx = QueryContext(app_sandbox)
+
+        sensitive = ["/etc/passwd", "/etc/shadow", "~/.ssh/id_rsa"]
+        for path in sensitive:
+            result = ctx.query_path(path, AccessMode.READ)
+            assert result["status"] == "denied", f"Should block {path}"
+```

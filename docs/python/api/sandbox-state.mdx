@@ -1,0 +1,270 @@
+---
+title: SandboxState
+description: Serialize and restore capability sets
+---
+
+`SandboxState` provides JSON serialization for capability sets. Use it to persist sandbox configurations, pass them across process boundaries, or store them in configuration files.
+
+## Creating State
+
+### from_caps
+
+```python
+@staticmethod
+SandboxState.from_caps(caps: CapabilitySet) -> SandboxState
+```
+
+Create a state snapshot from a capability set.
+
+<ParamField path="caps" type="CapabilitySet" required>
+  The capability set to snapshot.
+</ParamField>
+
+**Returns:** A new `SandboxState` instance.
+
+```python
+from nono_py import CapabilitySet, AccessMode, SandboxState
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.block_network()
+
+state = SandboxState.from_caps(caps)
+print(state)  # SandboxState(fs=1, net_blocked=True)
+```
+
+---
+
+### from_json
+
+```python
+@staticmethod
+SandboxState.from_json(json: str) -> SandboxState
+```
+
+Deserialize state from a JSON string.
+
+<ParamField path="json" type="str" required>
+  JSON string to parse.
+</ParamField>
+
+**Returns:** A new `SandboxState` instance.
+
+**Raises:**
+- `ValueError` - Invalid JSON format
+
+```python
+json_str = '{"fs":[{"path":"/tmp","access":"ReadWrite","is_file":false}],"net_blocked":true}'
+state = SandboxState.from_json(json_str)
+```
+
+## Methods
+
+### to_json
+
+```python
+to_json() -> str
+```
+
+Serialize the state to a JSON string.
+
+**Returns:** JSON string representation.
+
+```python
+from nono_py import CapabilitySet, AccessMode, SandboxState
+
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.block_network()
+
+state = SandboxState.from_caps(caps)
+json_str = state.to_json()
+
+print(json_str)
+# {"fs":[{"path":"/private/tmp","access":"ReadWrite","is_file":false}],"net_blocked":true}
+```
+
+---
+
+### to_caps
+
+```python
+to_caps() -> CapabilitySet
+```
+
+Reconstruct a capability set from this state.
+
+**Returns:** A new `CapabilitySet` instance.
+
+**Raises:**
+- `FileNotFoundError` - A path in the state no longer exists
+
+```python
+# Restore capabilities from state
+restored_caps = state.to_caps()
+print(restored_caps.is_network_blocked)  # True
+```
+
+<Warning>
+`to_caps()` validates that all paths still exist. If a path was deleted since the state was created, it raises `FileNotFoundError`.
+</Warning>
+
+## Properties
+
+### net_blocked
+
+```python
+@property
+net_blocked: bool
+```
+
+`True` if network access is blocked in this state.
+
+```python
+state = SandboxState.from_caps(caps)
+print(state.net_blocked)  # True
+```
+
+## JSON Format
+
+The serialized JSON has this structure:
+
+```json
+{
+  "fs": [
+    {
+      "path": "/private/tmp",
+      "access": "ReadWrite",
+      "is_file": false
+    },
+    {
+      "path": "/private/etc/hosts",
+      "access": "Read",
+      "is_file": true
+    }
+  ],
+  "net_blocked": true
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fs` | array | Filesystem capabilities |
+| `fs[].path` | string | Resolved/canonicalized path |
+| `fs[].access` | string | `"Read"`, `"Write"`, or `"ReadWrite"` |
+| `fs[].is_file` | boolean | `true` for file, `false` for directory |
+| `net_blocked` | boolean | Whether network is blocked |
+
+## Use Cases
+
+### Persist Configuration
+
+Save sandbox configuration to a file:
+
+```python
+from nono_py import CapabilitySet, AccessMode, SandboxState
+import json
+
+# Create and configure
+caps = CapabilitySet()
+caps.allow_path("/data", AccessMode.READ_WRITE)
+caps.allow_path("/config", AccessMode.READ)
+caps.block_network()
+
+# Save to file
+state = SandboxState.from_caps(caps)
+with open("sandbox.json", "w") as f:
+    f.write(state.to_json())
+
+# Load from file
+with open("sandbox.json", "r") as f:
+    loaded_state = SandboxState.from_json(f.read())
+
+restored_caps = loaded_state.to_caps()
+```
+
+### Pass Across Processes
+
+Transfer sandbox configuration via environment variable or IPC:
+
+```python
+import os
+from nono_py import CapabilitySet, AccessMode, SandboxState, apply
+
+# Parent process: encode configuration
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+
+state = SandboxState.from_caps(caps)
+os.environ["SANDBOX_CONFIG"] = state.to_json()
+
+# Child process: decode and apply
+config = os.environ.get("SANDBOX_CONFIG")
+if config:
+    state = SandboxState.from_json(config)
+    caps = state.to_caps()
+    apply(caps)
+```
+
+### Configuration Validation
+
+Load and validate a configuration file:
+
+```python
+from nono_py import SandboxState
+import sys
+
+def load_sandbox_config(path: str) -> SandboxState:
+    try:
+        with open(path, "r") as f:
+            return SandboxState.from_json(f.read())
+    except FileNotFoundError:
+        print(f"Config file not found: {path}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Invalid config: {e}")
+        sys.exit(1)
+
+state = load_sandbox_config("sandbox.json")
+
+try:
+    caps = state.to_caps()
+except FileNotFoundError as e:
+    print(f"Path no longer exists: {e}")
+    sys.exit(1)
+```
+
+## Round-Trip Example
+
+Complete example showing serialization round-trip:
+
+```python
+from nono_py import CapabilitySet, AccessMode, SandboxState
+
+# Original configuration
+original = CapabilitySet()
+original.allow_path("/tmp", AccessMode.READ_WRITE)
+original.allow_file("/etc/hosts", AccessMode.READ)
+original.block_network()
+
+# Serialize
+state = SandboxState.from_caps(original)
+json_str = state.to_json()
+print(f"Serialized: {json_str}")
+
+# Deserialize
+restored_state = SandboxState.from_json(json_str)
+restored = restored_state.to_caps()
+
+# Verify
+print(f"Network blocked: {restored.is_network_blocked}")  # True
+print(f"Capabilities: {len(restored.fs_capabilities())}")  # 2
+
+for cap in restored.fs_capabilities():
+    print(f"  {cap.resolved}: {cap.access}")
+```
+
+## Related
+
+- [CapabilitySet](/python/api/capability-set) - The capability set being serialized
+- [apply()](/python/api/functions#apply) - Apply restored capabilities

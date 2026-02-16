@@ -1,0 +1,87 @@
+---
+title: Python SDK
+description: Capability-based sandboxing for Python applications
+---
+
+The nono Python SDK provides OS-enforced sandboxing using Landlock (Linux) and Seatbelt (macOS). Once a sandbox is applied, unauthorized operations are structurally impossible.
+
+## Features
+
+<CardGroup cols={2}>
+  <Card title="OS-Enforced Security" icon="shield-halved">
+    Sandboxing enforced at the kernel level, not application level. Cannot be bypassed by the sandboxed process.
+  </Card>
+  <Card title="Capability-Based" icon="key">
+    Explicitly grant access to files, directories, and network. Everything else is denied by default.
+  </Card>
+  <Card title="Cross-Platform" icon="desktop">
+    Works on Linux (Landlock) and macOS (Seatbelt) with a unified API.
+  </Card>
+  <Card title="Type-Safe" icon="code">
+    Full type stubs for IDE autocompletion and static type checking with mypy.
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+```python
+from nono_py import CapabilitySet, AccessMode, apply, is_supported
+
+# Check platform support
+if not is_supported():
+    print("Sandboxing not supported on this platform")
+    exit(1)
+
+# Build capability set
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.allow_file("/etc/hosts", AccessMode.READ)
+caps.block_network()
+
+# Apply sandbox (irreversible!)
+apply(caps)
+
+# Process is now sandboxed
+# - Can read/write in /tmp
+# - Can read /etc/hosts
+# - Cannot access network
+# - Cannot access any other files
+```
+
+## When to Use
+
+The Python SDK is ideal for:
+
+- **AI Agents**: Sandbox untrusted code execution from LLM-generated scripts
+- **Plugin Systems**: Isolate third-party plugins from your main application
+- **Data Processing**: Limit file access when processing untrusted data
+- **Testing**: Ensure tests don't accidentally modify system files
+
+## Platform Support
+
+| Platform | Backend | Requirements |
+|----------|---------|--------------|
+| Linux | Landlock | Kernel 5.13+ with Landlock enabled |
+| macOS | Seatbelt | macOS 10.5+ |
+| Windows | - | Not supported |
+
+<Note>
+Use `is_supported()` to check if sandboxing is available at runtime.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/python/installation">
+    Install the SDK with pip or from source
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/python/quickstart">
+    Build your first sandboxed application
+  </Card>
+  <Card title="API Reference" icon="book" href="/python/api/capability-set">
+    Explore the full API documentation
+  </Card>
+  <Card title="Examples" icon="lightbulb" href="/python/examples">
+    See real-world usage patterns
+  </Card>
+</CardGroup>

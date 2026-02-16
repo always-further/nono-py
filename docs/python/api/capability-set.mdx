@@ -1,0 +1,306 @@
+---
+title: CapabilitySet
+description: Build and manage sandbox permissions
+---
+
+`CapabilitySet` is the core class for defining what a sandboxed process can access. It collects filesystem capabilities, network settings, and command filters before applying the sandbox.
+
+## Constructor
+
+```python
+CapabilitySet()
+```
+
+Creates a new empty capability set with no permissions granted.
+
+```python
+from nono_py import CapabilitySet
+
+caps = CapabilitySet()
+print(caps)  # CapabilitySet(fs=0, network=allowed)
+```
+
+## Methods
+
+### allow_path
+
+```python
+allow_path(path: str, mode: AccessMode) -> None
+```
+
+Grant access to a directory and all its contents recursively.
+
+<ParamField path="path" type="str" required>
+  Path to the directory. Must exist and be a directory.
+</ParamField>
+
+<ParamField path="mode" type="AccessMode" required>
+  Access level to grant: `READ`, `WRITE`, or `READ_WRITE`.
+</ParamField>
+
+**Raises:**
+- `FileNotFoundError` - Path does not exist
+- `ValueError` - Path is not a directory
+
+```python
+from nono_py import CapabilitySet, AccessMode
+
+caps = CapabilitySet()
+
+# Read-only access to /etc
+caps.allow_path("/etc", AccessMode.READ)
+
+# Full access to /tmp
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+```
+
+<Note>
+The path is canonicalized (symlinks resolved) when added. On macOS, `/tmp` becomes `/private/tmp`.
+</Note>
+
+---
+
+### allow_file
+
+```python
+allow_file(path: str, mode: AccessMode) -> None
+```
+
+Grant access to a single file only (not its parent directory).
+
+<ParamField path="path" type="str" required>
+  Path to the file. Must exist and be a regular file.
+</ParamField>
+
+<ParamField path="mode" type="AccessMode" required>
+  Access level to grant: `READ`, `WRITE`, or `READ_WRITE`.
+</ParamField>
+
+**Raises:**
+- `FileNotFoundError` - Path does not exist
+- `ValueError` - Path is not a file
+
+```python
+caps = CapabilitySet()
+
+# Allow reading hosts file
+caps.allow_file("/etc/hosts", AccessMode.READ)
+
+# Allow writing to a specific log file
+caps.allow_file("/var/log/myapp.log", AccessMode.WRITE)
+```
+
+---
+
+### block_network
+
+```python
+block_network() -> None
+```
+
+Block all network access for the sandboxed process.
+
+```python
+caps = CapabilitySet()
+caps.block_network()
+
+print(caps.is_network_blocked)  # True
+```
+
+<Note>
+Network is **allowed by default**. Call `block_network()` to restrict it.
+</Note>
+
+---
+
+### allow_command
+
+```python
+allow_command(cmd: str) -> None
+```
+
+Add a command to the allow list. Commands on the allow list override the block list.
+
+<ParamField path="cmd" type="str" required>
+  Command name to allow (e.g., `"git"`, `"python"`).
+</ParamField>
+
+```python
+caps = CapabilitySet()
+caps.allow_command("git")
+caps.allow_command("python")
+```
+
+---
+
+### block_command
+
+```python
+block_command(cmd: str) -> None
+```
+
+Add a command to the block list. Blocked commands are denied unless also on the allow list.
+
+<ParamField path="cmd" type="str" required>
+  Command name to block (e.g., `"rm"`, `"curl"`).
+</ParamField>
+
+```python
+caps = CapabilitySet()
+caps.block_command("rm")
+caps.block_command("curl")
+```
+
+---
+
+### platform_rule
+
+```python
+platform_rule(rule: str) -> None
+```
+
+Add a platform-specific sandbox rule. On macOS, this is a Seatbelt S-expression. Ignored on Linux.
+
+<ParamField path="rule" type="str" required>
+  Platform-specific rule string.
+</ParamField>
+
+**Raises:**
+- `ValueError` - Rule is malformed or grants dangerous access (e.g., root access)
+
+```python
+caps = CapabilitySet()
+
+# Allow mach port lookup (macOS only)
+caps.platform_rule('(allow mach-lookup (global-name "com.apple.system.logger"))')
+```
+
+<Warning>
+Platform rules are validated for safety. Rules that grant excessive permissions (like root filesystem access) are rejected.
+</Warning>
+
+---
+
+### deduplicate
+
+```python
+deduplicate() -> None
+```
+
+Remove duplicate filesystem capabilities, keeping the highest access level. User-granted capabilities take priority over system-granted ones.
+
+```python
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ)
+caps.allow_path("/tmp", AccessMode.WRITE)
+
+print(len(caps.fs_capabilities()))  # 2
+
+caps.deduplicate()
+
+print(len(caps.fs_capabilities()))  # 1
+```
+
+---
+
+### path_covered
+
+```python
+path_covered(path: str) -> bool
+```
+
+Check if a path is covered by an existing directory capability.
+
+<ParamField path="path" type="str" required>
+  Path to check.
+</ParamField>
+
+**Returns:** `True` if the path would be accessible via an existing capability.
+
+```python
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ)
+
+print(caps.path_covered("/tmp/subdir/file.txt"))  # True
+print(caps.path_covered("/var/log"))              # False
+```
+
+<Note>
+This checks against resolved/canonicalized paths. Use the resolved path from a capability for accurate results.
+</Note>
+
+---
+
+### fs_capabilities
+
+```python
+fs_capabilities() -> list[FsCapability]
+```
+
+Get all filesystem capabilities in the set.
+
+**Returns:** List of `FsCapability` objects.
+
+```python
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.allow_file("/etc/hosts", AccessMode.READ)
+
+for cap in caps.fs_capabilities():
+    print(f"{cap.resolved}: {cap.access} ({'file' if cap.is_file else 'dir'})")
+```
+
+---
+
+### summary
+
+```python
+summary() -> str
+```
+
+Get a human-readable summary of all capabilities.
+
+**Returns:** Multi-line string describing the capability set.
+
+```python
+caps = CapabilitySet()
+caps.allow_path("/tmp", AccessMode.READ_WRITE)
+caps.allow_file("/etc/hosts", AccessMode.READ)
+caps.block_network()
+
+print(caps.summary())
+```
+
+Output:
+```
+Filesystem:
+  dir  /private/tmp (read+write)
+  file /private/etc/hosts (read)
+
+Network: blocked
+```
+
+## Properties
+
+### is_network_blocked
+
+```python
+@property
+is_network_blocked: bool
+```
+
+`True` if network access is blocked.
+
+```python
+caps = CapabilitySet()
+print(caps.is_network_blocked)  # False
+
+caps.block_network()
+print(caps.is_network_blocked)  # True
+```
+
+## Related
+
+- [AccessMode](/python/api/access-mode) - Access mode enum
+- [FsCapability](/python/api/fs-capability) - Filesystem capability details
+- [apply()](/python/api/functions#apply) - Apply the sandbox

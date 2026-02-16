@@ -1,0 +1,151 @@
+---
+title: Installation
+description: Install the nono Python SDK
+---
+
+## Requirements
+
+- Python 3.9 or higher
+- Linux (kernel 5.13+ with Landlock) or macOS (10.5+)
+
+## Install from PyPI
+
+The simplest way to install nono-py:
+
+```bash
+pip install nono-py
+```
+
+Or with your preferred package manager:
+
+<CodeGroup>
+```bash pip
+pip install nono-py
+```
+
+```bash uv
+uv add nono-py
+```
+
+```bash poetry
+poetry add nono-py
+```
+
+```bash pipenv
+pipenv install nono-py
+```
+</CodeGroup>
+
+## Install from Source
+
+To build from source, you need the Rust toolchain:
+
+### 1. Install Rust
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### 2. Clone and Build
+
+```bash
+git clone https://github.com/always-further/nono-py.git
+cd nono-py
+
+# Install with pip
+pip install .
+
+# Or use maturin directly
+pip install maturin
+maturin develop
+```
+
+## Verify Installation
+
+```python
+import nono_py
+
+# Check version
+print(f"nono-py version: {nono_py.__version__}")
+
+# Check platform support
+info = nono_py.support_info()
+print(f"Platform: {info.platform}")
+print(f"Supported: {info.is_supported}")
+print(f"Details: {info.details}")
+```
+
+Expected output on a supported system:
+
+```
+nono-py version: 0.1.0
+Platform: macos
+Supported: True
+Details: Seatbelt sandbox available
+```
+
+## Development Installation
+
+For contributing or local development:
+
+```bash
+git clone https://github.com/always-further/nono-py.git
+cd nono-py
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dev dependencies and build
+pip install maturin pytest mypy ruff
+maturin develop
+
+# Run tests
+pytest tests/ -v
+```
+
+Or using [uv](https://docs.astral.sh/uv/):
+
+```bash
+git clone https://github.com/always-further/nono-py.git
+cd nono-py
+
+# Install dependencies and build
+uv sync
+uv run maturin develop
+
+# Run tests
+uv run pytest tests/ -v
+```
+
+## Troubleshooting
+
+### ImportError: No module named 'nono_py'
+
+Ensure you've installed the package in your active environment:
+
+```bash
+pip list | grep nono
+```
+
+If using a virtual environment, make sure it's activated.
+
+### Unsupported Platform
+
+If `is_supported()` returns `False`:
+
+- **Linux**: Check your kernel version (`uname -r`). Landlock requires 5.13+.
+- **macOS**: Should work on any recent version.
+- **Windows**: Not supported.
+
+### Build Errors
+
+If building from source fails:
+
+1. Ensure Rust is installed: `rustc --version`
+2. Update Rust: `rustup update`
+3. Check Python version: `python --version` (3.9+ required)
+
+<Note>
+For detailed build instructions, see the [Development Guide](https://github.com/always-further/nono-py/blob/main/DEVELOPMENT.md).
+</Note>
