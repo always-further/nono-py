@@ -467,8 +467,8 @@ impl SandboxState {
     ///
     /// Returns:
     ///     JSON string representation
-    fn to_json(&self) -> String {
-        self.inner.to_json()
+    fn to_json(&self) -> PyResult<String> {
+        self.inner.to_json().map_err(to_py_err)
     }
 
     /// Deserialize state from a JSON string.
