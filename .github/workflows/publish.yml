@@ -54,16 +54,20 @@ jobs:
         include:
           # Linux x86_64
           - os: ubuntu-latest
-            target: x86_64
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_28
           # Linux aarch64
           - os: ubuntu-latest
-            target: aarch64
-          # macOS x86_64 (use macos-latest which is arm64, cross-compile)
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_28
+          # macOS x86_64
           - os: macos-latest
-            target: x86_64
+            target: x86_64-apple-darwin
+            manylinux: 'off'
           # macOS Apple Silicon
           - os: macos-latest
-            target: aarch64
+            target: aarch64-apple-darwin
+            manylinux: 'off'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -73,15 +77,28 @@ jobs:
           repository: always-further/nono
           path: nono
 
+      - name: Set up Python (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
       - name: Fix nono path for CI
-        run: sed -i'' -e 's|path = "../nono/crates/nono"|path = "nono/crates/nono"|' Cargo.toml
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sed -i 's|path = "../nono/crates/nono"|path = "nono/crates/nono"|' Cargo.toml
+          else
+            sed -i '' 's|path = "../nono/crates/nono"|path = "nono/crates/nono"|' Cargo.toml
+          fi
 
       - name: Build wheels
         uses: PyO3/maturin-action@b1bd829e37fef14c63f19162034228a2f3dc1021 # v1.50.0
         with:
           target: ${{ matrix.target }}
           args: --release --out dist
-          manylinux: auto
+          manylinux: ${{ matrix.manylinux }}
+          before-script-linux: |
+            dnf install -y dbus-devel pkgconfig || yum install -y dbus-devel pkgconfig || apt-get update && apt-get install -y libdbus-1-dev pkg-config
 
       - name: Upload wheels
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
