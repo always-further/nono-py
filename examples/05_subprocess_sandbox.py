@@ -9,13 +9,12 @@ NOTE: This is a demonstration pattern. In production, you would
 typically have a separate worker script that applies the sandbox.
 """
 
-import json
 import os
 import subprocess
 import sys
 import tempfile
 
-from nono_py import AccessMode, CapabilitySet, SandboxState, apply, is_supported
+from nono_py import AccessMode, CapabilitySet, SandboxState, is_supported
 
 
 def create_worker_script(workdir: str) -> str:

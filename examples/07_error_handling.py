@@ -181,8 +181,10 @@ if __name__ == "__main__":
 
     # Example safe setup
     print()
-    safe_sandbox_setup([
-        ("/tmp", AccessMode.READ_WRITE),
-        ("/usr", AccessMode.READ),
-        ("/nonexistent", AccessMode.READ),  # Will be skipped
-    ])
+    safe_sandbox_setup(
+        [
+            ("/tmp", AccessMode.READ_WRITE),
+            ("/usr", AccessMode.READ),
+            ("/nonexistent", AccessMode.READ),  # Will be skipped
+        ]
+    )

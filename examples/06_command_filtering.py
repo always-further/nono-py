@@ -79,7 +79,11 @@ def demo_build_environment() -> None:
     # Filesystem access
     caps.allow_path("/tmp", AccessMode.READ_WRITE)
     caps.allow_path("/usr", AccessMode.READ)
-    caps.allow_path("/lib", AccessMode.READ)
+    # /lib exists on Linux but not macOS
+    import os
+
+    if os.path.isdir("/lib"):
+        caps.allow_path("/lib", AccessMode.READ)
 
     # Block network
     caps.block_network()
