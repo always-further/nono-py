@@ -45,29 +45,13 @@ jobs:
           name: dist-sdist
           path: dist/*.tar.gz
 
-  build-wheels:
-    name: Build wheels (${{ matrix.os }} ${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
+  build-wheels-linux:
+    name: Build wheels (Linux ${{ matrix.target }})
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Linux x86_64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            manylinux: manylinux_2_28
-          # Linux aarch64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            manylinux: manylinux_2_28
-          # macOS x86_64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            manylinux: 'off'
-          # macOS Apple Silicon
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            manylinux: 'off'
+        target: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -77,38 +61,69 @@ jobs:
           repository: always-further/nono
           path: nono
 
-      - name: Set up Python (macOS)
-        if: runner.os == 'macOS'
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: '3.12'
-
       - name: Fix nono path for CI
-        run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            sed -i 's|path = "../nono/crates/nono"|path = "nono/crates/nono"|' Cargo.toml
-          else
-            sed -i '' 's|path = "../nono/crates/nono"|path = "nono/crates/nono"|' Cargo.toml
-          fi
+        run: sed -i 's|path = "../nono/crates/nono"|path = "nono/crates/nono"|' Cargo.toml
 
       - name: Build wheels
         uses: PyO3/maturin-action@b1bd829e37fef14c63f19162034228a2f3dc1021 # v1.50.0
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
-          manylinux: ${{ matrix.manylinux }}
+          args: --release --out dist --find-interpreter
+          manylinux: auto
           before-script-linux: |
-            dnf install -y dbus-devel pkgconfig || yum install -y dbus-devel pkgconfig || apt-get update && apt-get install -y libdbus-1-dev pkg-config
+            if command -v dnf &> /dev/null; then
+              dnf install -y dbus-devel pkgconfig
+            elif command -v yum &> /dev/null; then
+              yum install -y dbus-devel pkgconfig
+            elif command -v apt-get &> /dev/null; then
+              apt-get update && apt-get install -y libdbus-1-dev pkg-config
+            fi
 
       - name: Upload wheels
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: dist-${{ matrix.os }}-${{ matrix.target }}
+          name: dist-linux-${{ matrix.target }}
+          path: dist/*.whl
+
+  build-wheels-macos:
+    name: Build wheels (macOS ${{ matrix.target }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Checkout nono library
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: always-further/nono
+          path: nono
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Fix nono path for CI
+        run: sed -i '' 's|path = "../nono/crates/nono"|path = "nono/crates/nono"|' Cargo.toml
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@b1bd829e37fef14c63f19162034228a2f3dc1021 # v1.50.0
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist -i python3.12
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dist-macos-${{ matrix.target }}
           path: dist/*.whl
 
   publish-testpypi:
     name: Publish to TestPyPI
-    needs: [build-sdist, build-wheels]
+    needs: [build-sdist, build-wheels-linux, build-wheels-macos]
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_target == 'testpypi'
     environment:
@@ -131,7 +146,7 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    needs: [build-sdist, build-wheels]
+    needs: [build-sdist, build-wheels-linux, build-wheels-macos]
     runs-on: ubuntu-latest
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_target == 'pypi')
     environment:
