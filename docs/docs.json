@@ -1,4 +1,28 @@
 {
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "nono Python SDK",
+  "logo": {
+    "dark": "/assets/logo.png",
+    "light": "/assets/logo.png"
+  },
+  "favicon": "/assets/logo.png",
+  "colors": {
+    "primary": "#6366F1"
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "navbar": {
+    "links": [
+      { "label": "GitHub", "href": "https://github.com/always-further/nono-py" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Discord",
+      "href": "https://discord.gg/pPcjYzGvbS"
+    }
+  },
   "navigation": {
     "groups": [
       {
@@ -23,5 +47,11 @@
         "pages": ["python/examples"]
       }
     ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/always-further/nono-py",
+      "discord": "https://discord.gg/pPcjYzGvbS"
+    }
   }
 }
