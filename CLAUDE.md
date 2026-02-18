@@ -56,7 +56,7 @@ uv run mypy python/nono_py                   # Type check (strict mode)
 
 ### Nono Dependency
 
-`Cargo.toml` references the nono library via local path (`../nono/crates/nono`). Both repos must be sibling directories for local development. CI checks out nono as a sibling automatically.
+The nono library is pulled from crates.io (`nono = "0.6.0"`).
 
 ## Conventions
 

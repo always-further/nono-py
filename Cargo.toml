@@ -13,5 +13,5 @@ name = "_nono_py"
 crate-type = ["cdylib"]
 
 [dependencies]
-nono = { path = "../nono/crates/nono" }
+nono = "0.6.0"
 pyo3 = { version = "0.23", features = ["extension-module"] }

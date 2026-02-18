@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-import pytest  # ty:ignore[unresolved-import]  # noqa: F401
+import pytest  # noqa: F401v0.6.0
 
 from nono_py import AccessMode, CapabilitySet
 
@@ -191,4 +191,4 @@ class TestCapabilitySetPlatformRule:
         caps = CapabilitySet()
         # An invalid/dangerous rule should be rejected
         with pytest.raises(ValueError):
-            caps.platform_rule("(allow file-read* (subpath \"/\"))")
+            caps.platform_rule('(allow file-read* (subpath "/"))')
