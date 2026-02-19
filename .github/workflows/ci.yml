@@ -86,12 +86,13 @@ jobs:
       - name: Install maturin and pytest
         run: |
           source .venv/bin/activate
+          pip install --upgrade pip
           pip install maturin pytest
 
       - name: Build and install
         run: |
           source .venv/bin/activate
-          maturin develop --skip-install
+          maturin develop
 
       - name: Run tests
         run: |
@@ -124,12 +125,13 @@ jobs:
       - name: Install dependencies
         run: |
           source .venv/bin/activate
+          pip install --upgrade pip
           pip install maturin mypy
 
       - name: Build package
         run: |
           source .venv/bin/activate
-          maturin develop --skip-install
+          maturin develop
 
       - name: Run mypy
         run: |
