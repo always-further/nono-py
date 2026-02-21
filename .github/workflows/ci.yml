@@ -137,3 +137,25 @@ jobs:
         run: |
           source .venv/bin/activate
           mypy python/nono_py --ignore-missing-imports
+
+  docs-checks:
+    name: Docs Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify docs routes are canonical
+        run: |
+          if rg -n -P 'href="/(?!python/)|\]\(/(?!python/)' docs/python; then
+            echo "Found non-canonical absolute docs links in docs/python."
+            exit 1
+          fi
+
+      - name: Verify docs nav pages exist
+        run: |
+          jq -r '.navigation.groups[].pages[]' docs/docs.json | while read -r page; do
+            if [[ ! -f "docs/${page}.mdx" ]]; then
+              echo "Missing page from docs.json navigation: docs/${page}.mdx"
+              exit 1
+            fi
+          done
