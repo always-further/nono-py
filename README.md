@@ -1,6 +1,7 @@
 <div align="center">
 
 <img src="assets/nono-py.png" alt="nono logo" width="500"/>
+</p>
 
 <a href="https://discord.gg/pPcjYzGvbS">
   <img src="https://img.shields.io/badge/Chat-Join%20Discord-7289da?style=for-the-badge&logo=discord&logoColor=white" alt="Join Discord"/>
