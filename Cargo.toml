@@ -1,6 +1,6 @@
 [package]
 name = "nono-py"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.80"
 authors = ["Luke Hinds <lukehinds@gmail.com>"]
@@ -13,5 +13,5 @@ name = "_nono_py"
 crate-type = ["cdylib"]
 
 [dependencies]
-nono = "0.15.0"
+nono = "0.18.0"
 pyo3 = { version = "0.23", features = ["extension-module"] }
