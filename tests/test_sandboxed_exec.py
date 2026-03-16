@@ -1,10 +1,21 @@
 """Tests for sandboxed_exec function."""
 
+import contextlib
 import os
 
 import pytest
 
 from nono_py import AccessMode, CapabilitySet, ExecResult, sandboxed_exec
+
+_SYSTEM_PATHS = ["/usr", "/bin", "/sbin", "/lib"]
+_MACOS_PATHS = ["/private", "/Library/Frameworks", "/dev"]
+
+
+def _add_system_paths(caps: CapabilitySet) -> None:
+    """Add system paths to a capability set, ignoring missing ones."""
+    for sys_path in _SYSTEM_PATHS + _MACOS_PATHS:
+        with contextlib.suppress(FileNotFoundError):
+            caps.allow_path(sys_path, AccessMode.READ)
 
 
 class TestExecResult:
@@ -13,16 +24,7 @@ class TestExecResult:
     def test_repr(self, temp_dir):
         """ExecResult has a useful repr."""
         caps = CapabilitySet()
-        for sys_path in ["/usr", "/bin", "/sbin", "/lib"]:
-            try:
-                caps.allow_path(sys_path, AccessMode.READ)
-            except FileNotFoundError:
-                pass
-        for sys_path in ["/private", "/Library/Frameworks", "/dev"]:
-            try:
-                caps.allow_path(sys_path, AccessMode.READ)
-            except FileNotFoundError:
-                pass
+        _add_system_paths(caps)
         caps.allow_path(str(temp_dir), AccessMode.READ_WRITE)
         result = sandboxed_exec(caps, ["echo", "hello"], cwd=str(temp_dir))
         assert "ExecResult" in repr(result)
@@ -36,20 +38,7 @@ class TestSandboxedExec:
     def base_caps(self, temp_dir):
         """Create a capability set with system paths and a working directory."""
         caps = CapabilitySet()
-        # System paths needed for command execution
-        for sys_path in ["/usr", "/bin", "/sbin", "/lib"]:
-            try:
-                caps.allow_path(sys_path, AccessMode.READ)
-            except FileNotFoundError:
-                pass
-
-        # macOS-specific system paths
-        for sys_path in ["/private", "/Library/Frameworks", "/dev"]:
-            try:
-                caps.allow_path(sys_path, AccessMode.READ)
-            except FileNotFoundError:
-                pass
-
+        _add_system_paths(caps)
         caps.allow_path(str(temp_dir), AccessMode.READ_WRITE)
         return caps
 
@@ -109,27 +98,14 @@ class TestSandboxedExec:
     def test_sandbox_blocks_access(self, temp_dir):
         """Sandbox prevents access to paths not in the capability set."""
         caps = CapabilitySet()
-        # Only grant minimal system paths and temp_dir
-        for sys_path in ["/usr", "/bin", "/sbin", "/lib"]:
-            try:
-                caps.allow_path(sys_path, AccessMode.READ)
-            except FileNotFoundError:
-                pass
-        for sys_path in ["/private", "/Library/Frameworks", "/dev"]:
-            try:
-                caps.allow_path(sys_path, AccessMode.READ)
-            except FileNotFoundError:
-                pass
-
+        _add_system_paths(caps)
         caps.allow_path(str(temp_dir), AccessMode.READ_WRITE)
 
-        # Try to read a path outside the sandbox
         result = sandboxed_exec(
             caps,
             ["cat", "/etc/passwd"],
             cwd=str(temp_dir),
         )
-        # Should fail - file not accessible in sandbox
         assert result.exit_code != 0
 
     def test_write_file_in_sandbox(self, base_caps, temp_dir):

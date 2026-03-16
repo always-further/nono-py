@@ -44,6 +44,22 @@ impl ExecResult {
     }
 }
 
+/// Pre-fork data prepared in the parent (where allocation is safe).
+struct ForkContext {
+    caps: nono::CapabilitySet,
+    program_c: CString,
+    argv_c: Vec<CString>,
+    env_c: Vec<CString>,
+    cwd_c: Option<CString>,
+    timeout_secs: Option<f64>,
+}
+
+/// Pipe file descriptors for stdout or stderr.
+struct PipeFds {
+    read_fd: i32,
+    write_fd: i32,
+}
+
 /// Execute a command in a sandboxed child process.
 ///
 /// Forks the current process, applies capability-based sandbox restrictions
@@ -68,7 +84,7 @@ impl ExecResult {
 /// Raises:
 ///     RuntimeError: If fork fails, sandbox cannot be applied, or the
 ///         command cannot be executed
-///     ValueError: If the command list is empty
+///     ValueError: If the command list is empty or timeout is negative
 #[pyfunction]
 #[pyo3(signature = (caps, command, cwd=None, timeout_secs=None, env=None))]
 pub fn sandboxed_exec(
@@ -89,54 +105,68 @@ pub fn sandboxed_exec(
     // which panics on negative or NaN values.
     if let Some(t) = timeout_secs {
         if t < 0.0 || t.is_nan() {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                format!("timeout_secs must be non-negative, got {}", t),
-            ));
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "timeout_secs must be non-negative, got {}",
+                t
+            )));
         }
     }
 
-    // Verify single-threaded before fork. Python's GIL means we're called
-    // from a Python thread, but there may be other OS threads (GC, etc.).
-    // We check /proc/self/status on Linux; on macOS we skip this check
-    // since the Seatbelt sandbox_init() path is safe in the child.
+    // Verify threading before fork on Linux.
     #[cfg(target_os = "linux")]
     {
         let thread_count = get_thread_count().map_err(|e| {
             PyRuntimeError::new_err(format!("Failed to check thread count: {}", e))
         })?;
-        // Python typically has multiple threads (GC, etc.) so we allow
-        // a reasonable count. The child calls Sandbox::apply() which
-        // allocates, but only the forking thread continues in the child.
-        // This is safe as long as no other thread holds the allocator lock.
         if thread_count > 32 {
             return Err(PyRuntimeError::new_err(format!(
-                "Too many threads ({}) for safe fork. Reduce thread count before calling sandboxed_exec.",
+                "Too many threads ({}) for safe fork. \
+                 Reduce thread count before calling sandboxed_exec.",
                 thread_count
             )));
         }
     }
 
-    // Resolve program to absolute path via PATH lookup before fork.
-    // execve does not search PATH, so we must do it ourselves.
+    // Prepare all data before fork (allocation-safe zone)
+    let ctx = prepare_fork_context(&caps.inner, &command, cwd, timeout_secs, env)?;
+
+    // Create pipes for stdout and stderr
+    let stdout_pipe = create_pipe()?;
+    let stderr_pipe = create_pipe()?;
+
+    // Release the GIL during fork+wait so other Python threads can proceed
+    py.allow_threads(|| do_fork_sandbox_exec(&ctx, &stdout_pipe, &stderr_pipe))
+}
+
+/// Prepare all data needed for fork+exec while allocation is safe.
+fn prepare_fork_context(
+    caps: &nono::CapabilitySet,
+    command: &[String],
+    cwd: Option<String>,
+    timeout_secs: Option<f64>,
+    env: Option<Vec<(String, String)>>,
+) -> PyResult<ForkContext> {
     let resolved_program = resolve_program(&command[0])?;
     let program_c = CString::new(resolved_program.as_os_str().as_bytes())
         .map_err(|_| PyRuntimeError::new_err("Program path contains null byte"))?;
+
     let mut argv_c: Vec<CString> = Vec::with_capacity(command.len());
-    for arg in &command {
+    for arg in command {
         argv_c.push(
             CString::new(arg.as_bytes())
                 .map_err(|_| PyRuntimeError::new_err("Argument contains null byte"))?,
         );
     }
 
-    // Build environment
     let env_c = build_env_cstrings(env.as_deref())?;
 
-    // Convert cwd — canonicalize to handle macOS symlinks (/var -> /private/var)
     let cwd_c = match &cwd {
         Some(d) => {
             let canonical = std::fs::canonicalize(d).map_err(|e| {
-                PyRuntimeError::new_err(format!("Cannot resolve working directory '{}': {}", d, e))
+                PyRuntimeError::new_err(format!(
+                    "Cannot resolve working directory '{}': {}",
+                    d, e
+                ))
             })?;
             Some(
                 CString::new(canonical.as_os_str().as_bytes())
@@ -146,39 +176,24 @@ pub fn sandboxed_exec(
         None => None,
     };
 
-    // Create pipes for stdout and stderr
-    let (stdout_read_fd, stdout_write_fd) = create_pipe()?;
-    let (stderr_read_fd, stderr_write_fd) = create_pipe()?;
-
-    // Release the GIL during fork+wait so other Python threads can proceed
-    let result = py.allow_threads(|| {
-        do_fork_sandbox_exec(
-            &caps.inner,
-            &program_c,
-            &argv_c,
-            &env_c,
-            cwd_c.as_ref(),
-            stdout_read_fd,
-            stdout_write_fd,
-            stderr_read_fd,
-            stderr_write_fd,
-            timeout_secs,
-        )
-    });
-
-    result
+    Ok(ForkContext {
+        caps: caps.clone(),
+        program_c,
+        argv_c,
+        env_c,
+        cwd_c,
+        timeout_secs,
+    })
 }
 
 /// Build environment CStrings from current env + overrides.
 fn build_env_cstrings(overrides: Option<&[(String, String)]>) -> PyResult<Vec<CString>> {
     let mut env_c: Vec<CString> = Vec::new();
 
-    // Collect override keys for filtering
     let override_keys: std::collections::HashSet<&str> = overrides
         .map(|ovr| ovr.iter().map(|(k, _)| k.as_str()).collect())
         .unwrap_or_default();
 
-    // Copy current environment, skipping overridden keys
     for (key, value) in std::env::vars() {
         if !override_keys.contains(key.as_str()) {
             if let Ok(cstr) = CString::new(format!("{}={}", key, value)) {
@@ -187,7 +202,6 @@ fn build_env_cstrings(overrides: Option<&[(String, String)]>) -> PyResult<Vec<CS
         }
     }
 
-    // Add overrides
     if let Some(ovr) = overrides {
         for (key, value) in ovr {
             if let Ok(cstr) = CString::new(format!("{}={}", key, value)) {
@@ -199,8 +213,8 @@ fn build_env_cstrings(overrides: Option<&[(String, String)]>) -> PyResult<Vec<CS
     Ok(env_c)
 }
 
-/// Create a pipe, returning (read_fd, write_fd).
-fn create_pipe() -> PyResult<(i32, i32)> {
+/// Create a pipe, returning a PipeFds struct.
+fn create_pipe() -> PyResult<PipeFds> {
     let mut fds = [0i32; 2];
     // SAFETY: pipe() is safe with a valid 2-element array.
     let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
@@ -210,50 +224,43 @@ fn create_pipe() -> PyResult<(i32, i32)> {
             std::io::Error::last_os_error()
         )));
     }
-    Ok((fds[0], fds[1]))
+    Ok(PipeFds {
+        read_fd: fds[0],
+        write_fd: fds[1],
+    })
 }
 
 /// Fork, apply sandbox in child, exec command, capture output in parent.
 fn do_fork_sandbox_exec(
-    caps: &nono::CapabilitySet,
-    program_c: &CString,
-    argv_c: &[CString],
-    env_c: &[CString],
-    cwd_c: Option<&CString>,
-    stdout_read_fd: i32,
-    stdout_write_fd: i32,
-    stderr_read_fd: i32,
-    stderr_write_fd: i32,
-    timeout_secs: Option<f64>,
+    ctx: &ForkContext,
+    stdout_pipe: &PipeFds,
+    stderr_pipe: &PipeFds,
 ) -> PyResult<ExecResult> {
-    // Build null-terminated pointer arrays for execve
-    let argv_ptrs: Vec<*const libc::c_char> = argv_c
+    let argv_ptrs: Vec<*const libc::c_char> = ctx
+        .argv_c
         .iter()
         .map(|s| s.as_ptr())
         .chain(std::iter::once(std::ptr::null()))
         .collect();
 
-    let envp_ptrs: Vec<*const libc::c_char> = env_c
+    let envp_ptrs: Vec<*const libc::c_char> = ctx
+        .env_c
         .iter()
         .map(|s| s.as_ptr())
         .chain(std::iter::once(std::ptr::null()))
         .collect();
 
-    // SAFETY: fork() creates a child process. After fork, the child must
-    // only call async-signal-safe functions until exec. We allocate
-    // (Sandbox::apply generates Seatbelt profiles / opens Landlock path fds)
-    // which is technically not async-signal-safe, but is safe in practice
-    // because Python's GIL serializes Python threads and we validated the
-    // thread context above.
+    // SAFETY: fork() creates a child process. We validated threading
+    // context above. Sandbox::apply() allocates in the child, which is
+    // safe because only the forking thread continues after fork.
     let pid = unsafe { libc::fork() };
 
     if pid < 0 {
-        // Fork failed - close all pipe fds
         unsafe {
-            libc::close(stdout_read_fd);
-            libc::close(stdout_write_fd);
-            libc::close(stderr_read_fd);
-            libc::close(stderr_write_fd);
+            libc::close(stdout_pipe.read_fd);
+            libc::close(stdout_pipe.write_fd);
+            libc::close(stderr_pipe.read_fd);
+            libc::close(stderr_pipe.write_fd);
         }
         return Err(PyRuntimeError::new_err(format!(
             "fork() failed: {}",
@@ -263,60 +270,38 @@ fn do_fork_sandbox_exec(
 
     if pid == 0 {
         // === CHILD PROCESS ===
-        child_process(
-            caps,
-            program_c,
-            &argv_ptrs,
-            &envp_ptrs,
-            cwd_c,
-            stdout_read_fd,
-            stdout_write_fd,
-            stderr_read_fd,
-            stderr_write_fd,
-        );
-        // child_process never returns (calls _exit or execve)
+        child_process(ctx, &argv_ptrs, &envp_ptrs, stdout_pipe, stderr_pipe);
     }
 
     // === PARENT PROCESS ===
-    parent_process(
-        pid,
-        stdout_read_fd,
-        stdout_write_fd,
-        stderr_read_fd,
-        stderr_write_fd,
-        timeout_secs,
-    )
+    parent_process(pid, stdout_pipe, stderr_pipe, ctx.timeout_secs)
 }
 
 /// Child process: set up pipes, apply sandbox, chdir, exec.
 /// This function never returns.
 fn child_process(
-    caps: &nono::CapabilitySet,
-    program_c: &CString,
+    ctx: &ForkContext,
     argv_ptrs: &[*const libc::c_char],
     envp_ptrs: &[*const libc::c_char],
-    cwd_c: Option<&CString>,
-    stdout_read_fd: i32,
-    stdout_write_fd: i32,
-    stderr_read_fd: i32,
-    stderr_write_fd: i32,
+    stdout_pipe: &PipeFds,
+    stderr_pipe: &PipeFds,
 ) -> ! {
-    // Close read ends of pipes (parent reads, child writes)
+    // Close read ends (parent reads, child writes)
     unsafe {
-        libc::close(stdout_read_fd);
-        libc::close(stderr_read_fd);
+        libc::close(stdout_pipe.read_fd);
+        libc::close(stderr_pipe.read_fd);
     }
 
     // Redirect stdout and stderr to pipe write ends
     unsafe {
-        libc::dup2(stdout_write_fd, libc::STDOUT_FILENO);
-        libc::dup2(stderr_write_fd, libc::STDERR_FILENO);
-        libc::close(stdout_write_fd);
-        libc::close(stderr_write_fd);
+        libc::dup2(stdout_pipe.write_fd, libc::STDOUT_FILENO);
+        libc::dup2(stderr_pipe.write_fd, libc::STDERR_FILENO);
+        libc::close(stdout_pipe.write_fd);
+        libc::close(stderr_pipe.write_fd);
     }
 
     // Change working directory if specified
-    if let Some(dir) = cwd_c {
+    if let Some(ref dir) = ctx.cwd_c {
         unsafe {
             if libc::chdir(dir.as_ptr()) != 0 {
                 let msg = b"nono: failed to chdir\n";
@@ -331,7 +316,7 @@ fn child_process(
     }
 
     // Apply sandbox restrictions
-    if let Err(e) = Sandbox::apply(caps) {
+    if let Err(e) = Sandbox::apply(&ctx.caps) {
         let detail = format!("nono: sandbox apply failed: {}\n", e);
         let msg = detail.as_bytes();
         unsafe {
@@ -346,13 +331,14 @@ fn child_process(
 
     // Exec the command
     unsafe {
-        libc::execve(program_c.as_ptr(), argv_ptrs.as_ptr(), envp_ptrs.as_ptr());
+        libc::execve(
+            ctx.program_c.as_ptr(),
+            argv_ptrs.as_ptr(),
+            envp_ptrs.as_ptr(),
+        );
 
         // execve only returns on error
-        let detail = format!(
-            "nono: exec failed: {}\n",
-            std::io::Error::last_os_error()
-        );
+        let detail = format!("nono: exec failed: {}\n", std::io::Error::last_os_error());
         let msg = detail.as_bytes();
         libc::write(
             libc::STDERR_FILENO,
@@ -364,29 +350,27 @@ fn child_process(
 }
 
 /// Parent process: close write ends, read output, wait for child.
-///
-/// Spawns reader threads for stdout/stderr to prevent deadlock when the
-/// child produces more output than the pipe buffer. The main thread
-/// handles waitpid with timeout.
 fn parent_process(
     child_pid: i32,
-    stdout_read_fd: i32,
-    stdout_write_fd: i32,
-    stderr_read_fd: i32,
-    stderr_write_fd: i32,
+    stdout_pipe: &PipeFds,
+    stderr_pipe: &PipeFds,
     timeout_secs: Option<f64>,
 ) -> PyResult<ExecResult> {
-    // Close write ends of pipes (child writes, parent reads)
+    // Close write ends (child writes, parent reads)
     unsafe {
-        libc::close(stdout_write_fd);
-        libc::close(stderr_write_fd);
+        libc::close(stdout_pipe.write_fd);
+        libc::close(stderr_pipe.write_fd);
     }
 
+    // Capture read fds before spawning threads (moved into closures)
+    let stdout_read = stdout_pipe.read_fd;
+    let stderr_read = stderr_pipe.read_fd;
+
     // Spawn reader threads to drain pipes concurrently.
-    // This prevents deadlock when child output exceeds the pipe buffer.
+    // Prevents deadlock when child output exceeds pipe buffer.
     let stdout_handle = std::thread::spawn(move || {
         // SAFETY: We own this fd and it is a valid pipe read end.
-        let mut file = unsafe { std::fs::File::from_raw_fd(stdout_read_fd) };
+        let mut file = unsafe { std::fs::File::from_raw_fd(stdout_read) };
         let mut buf = Vec::new();
         let _ = file.read_to_end(&mut buf);
         buf
@@ -394,16 +378,14 @@ fn parent_process(
 
     let stderr_handle = std::thread::spawn(move || {
         // SAFETY: We own this fd and it is a valid pipe read end.
-        let mut file = unsafe { std::fs::File::from_raw_fd(stderr_read_fd) };
+        let mut file = unsafe { std::fs::File::from_raw_fd(stderr_read) };
         let mut buf = Vec::new();
         let _ = file.read_to_end(&mut buf);
         buf
     });
 
-    // Wait for child to exit (with timeout)
     let exit_code = wait_for_child(child_pid, timeout_secs)?;
 
-    // Join reader threads (child is dead, pipes will EOF)
     let stdout_buf = stdout_handle.join().unwrap_or_default();
     let stderr_buf = stderr_handle.join().unwrap_or_default();
 
@@ -421,7 +403,7 @@ fn wait_for_child(child_pid: i32, timeout_secs: Option<f64>) -> PyResult<i32> {
 
     loop {
         let mut status: i32 = 0;
-        // SAFETY: waitpid with WNOHANG is safe with a valid pid.
+        // SAFETY: waitpid is safe with a valid pid.
         let ret = unsafe {
             libc::waitpid(
                 child_pid,
@@ -449,25 +431,18 @@ fn wait_for_child(child_pid: i32, timeout_secs: Option<f64>) -> PyResult<i32> {
             // Child still running (WNOHANG returned 0)
             if let Some(dl) = deadline {
                 if Instant::now() >= dl {
-                    // Timeout: kill the child
                     unsafe {
                         libc::kill(child_pid, libc::SIGKILL);
-                    }
-                    // Reap the killed child
-                    unsafe {
                         libc::waitpid(child_pid, &mut status, 0);
                     }
-                    return Ok(124); // Standard timeout exit code
+                    return Ok(124);
                 }
             }
-            // Brief sleep to avoid busy-waiting
             std::thread::sleep(Duration::from_millis(10));
             continue;
         }
 
-        // Child exited
-        // SAFETY: These macros may require unsafe on some platforms (Linux)
-        // but are safe functions on macOS. Allow both.
+        // Child exited — extract status
         #[allow(unused_unsafe)]
         if unsafe { libc::WIFEXITED(status) } {
             #[allow(unused_unsafe)]
@@ -486,14 +461,9 @@ fn wait_for_child(child_pid: i32, timeout_secs: Option<f64>) -> PyResult<i32> {
 }
 
 /// Resolve a program name to its absolute path by searching PATH.
-///
-/// If the program is already an absolute or relative path, it is returned
-/// directly (after checking it exists). Otherwise, searches each directory
-/// in the PATH environment variable.
 fn resolve_program(program: &str) -> PyResult<PathBuf> {
     let path = Path::new(program);
 
-    // If it contains a path separator, treat as a path (not a bare command)
     if program.contains('/') {
         if path.exists() {
             return Ok(path.to_path_buf());
@@ -504,7 +474,6 @@ fn resolve_program(program: &str) -> PyResult<PathBuf> {
         )));
     }
 
-    // Search PATH
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in path_var.split(':') {
             let candidate = Path::new(dir).join(program);

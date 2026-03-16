@@ -243,6 +243,51 @@ class QueryContext:
         """
         ...
 
+class ExecResult:
+    """Result of a sandboxed command execution."""
+
+    @property
+    def stdout(self) -> bytes:
+        """Raw bytes from the child's stdout."""
+        ...
+
+    @property
+    def stderr(self) -> bytes:
+        """Raw bytes from the child's stderr."""
+        ...
+
+    @property
+    def exit_code(self) -> int:
+        """Process exit code (0 = success, -N = killed by signal N)."""
+        ...
+
+    def __repr__(self) -> str: ...
+
+def sandboxed_exec(
+    caps: CapabilitySet,
+    command: list[str],
+    cwd: str | None = None,
+    timeout_secs: float | None = None,
+    env: list[tuple[str, str]] | None = None,
+) -> ExecResult:
+    """Execute a command in a sandboxed child process.
+
+    Args:
+        caps: Capability set defining the child's permitted operations
+        command: List of command + arguments
+        cwd: Working directory for the child
+        timeout_secs: Maximum execution time in seconds (None = no limit)
+        env: Optional environment variable overrides
+
+    Returns:
+        ExecResult with stdout, stderr, and exit_code
+
+    Raises:
+        RuntimeError: If fork fails or command cannot be executed
+        ValueError: If command is empty or timeout is negative
+    """
+    ...
+
 def apply(caps: CapabilitySet) -> None:
     """Apply the sandbox with the given capabilities.
 
