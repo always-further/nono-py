@@ -1,4 +1,4 @@
-.PHONY: build build-release dev install test lint fmt fmt-check clean help
+.PHONY: build build-release dev install test lint fmt fmt-check clean help release
 
 # Default target
 help:
@@ -20,6 +20,9 @@ help:
 	@echo "  lint         Run linters (clippy + mypy)"
 	@echo "  fmt          Format code (rustfmt + ruff)"
 	@echo "  fmt-check    Check formatting"
+	@echo ""
+	@echo "Release targets:"
+	@echo "  release      Cut a release (make release VERSION=0.4.0)"
 	@echo ""
 	@echo "Other targets:"
 	@echo "  clean        Remove build artifacts"
@@ -99,3 +102,18 @@ clean:
 
 # CI target - run all checks
 ci: fmt-check lint test
+
+# Release: make release VERSION=0.4.0
+release:
+ifndef VERSION
+	$(error VERSION is required. Usage: make release VERSION=0.4.0)
+endif
+	@echo "Releasing v$(VERSION)..."
+	sed -i '' 's/^version = ".*"/version = "$(VERSION)"/' pyproject.toml
+	sed -i '' 's/^version = ".*"/version = "$(VERSION)"/' Cargo.toml
+	git add pyproject.toml Cargo.toml
+	git commit -m "Bump version to $(VERSION)"
+	git tag v$(VERSION)
+	git push origin main
+	git push origin v$(VERSION)
+	@echo "Released v$(VERSION) - publish workflow will handle PyPI"

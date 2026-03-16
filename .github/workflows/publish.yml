@@ -4,15 +4,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      publish_target:
-        description: 'Publish target'
-        required: true
-        default: 'testpypi'
-        type: choice
-        options:
-          - testpypi
-          - pypi
 
 permissions:
   contents: read
@@ -125,34 +116,11 @@ jobs:
           name: dist-macos-${{ matrix.target }}
           path: dist/*.whl
 
-  publish-testpypi:
-    name: Publish to TestPyPI
-    needs: [build-sdist, build-wheels-linux, build-wheels-macos]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_target == 'testpypi'
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/nono-py
-    permissions:
-      id-token: write
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-        with:
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
   publish-pypi:
     name: Publish to PyPI
     needs: [build-sdist, build-wheels-linux, build-wheels-macos]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_target == 'pypi')
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     environment:
       name: pypi
       url: https://pypi.org/p/nono-py
