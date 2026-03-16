@@ -115,9 +115,8 @@ pub fn sandboxed_exec(
     // Verify threading before fork on Linux.
     #[cfg(target_os = "linux")]
     {
-        let thread_count = get_thread_count().map_err(|e| {
-            PyRuntimeError::new_err(format!("Failed to check thread count: {}", e))
-        })?;
+        let thread_count = get_thread_count()
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to check thread count: {}", e)))?;
         if thread_count > 32 {
             return Err(PyRuntimeError::new_err(format!(
                 "Too many threads ({}) for safe fork. \
@@ -163,10 +162,7 @@ fn prepare_fork_context(
     let cwd_c = match &cwd {
         Some(d) => {
             let canonical = std::fs::canonicalize(d).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "Cannot resolve working directory '{}': {}",
-                    d, e
-                ))
+                PyRuntimeError::new_err(format!("Cannot resolve working directory '{}': {}", d, e))
             })?;
             Some(
                 CString::new(canonical.as_os_str().as_bytes())
@@ -408,11 +404,7 @@ fn wait_for_child(child_pid: i32, timeout_secs: Option<f64>) -> PyResult<i32> {
             libc::waitpid(
                 child_pid,
                 &mut status,
-                if deadline.is_some() {
-                    libc::WNOHANG
-                } else {
-                    0
-                },
+                if deadline.is_some() { libc::WNOHANG } else { 0 },
             )
         };
 
