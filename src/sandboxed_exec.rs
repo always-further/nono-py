@@ -85,6 +85,16 @@ pub fn sandboxed_exec(
         ));
     }
 
+    // Validate timeout before passing to Duration::from_secs_f64,
+    // which panics on negative or NaN values.
+    if let Some(t) = timeout_secs {
+        if t < 0.0 || t.is_nan() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                format!("timeout_secs must be non-negative, got {}", t),
+            ));
+        }
+    }
+
     // Verify single-threaded before fork. Python's GIL means we're called
     // from a Python thread, but there may be other OS threads (GC, etc.).
     // We check /proc/self/status on Linux; on macOS we skip this check

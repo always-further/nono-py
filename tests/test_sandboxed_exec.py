@@ -157,6 +157,16 @@ class TestSandboxedExec:
         with pytest.raises(ValueError, match="command must not be empty"):
             sandboxed_exec(base_caps, [])
 
+    def test_negative_timeout_raises(self, base_caps, temp_dir):
+        """Negative timeout raises ValueError instead of panicking."""
+        with pytest.raises(ValueError, match="timeout_secs must be non-negative"):
+            sandboxed_exec(
+                base_caps,
+                ["echo", "hello"],
+                cwd=str(temp_dir),
+                timeout_secs=-1.0,
+            )
+
     def test_repeated_calls(self, base_caps, temp_dir):
         """Multiple calls work - parent process stays unsandboxed."""
         for i in range(3):
