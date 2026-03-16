@@ -30,12 +30,14 @@ from nono_py._nono_py import (
     AccessMode,
     CapabilitySet,
     CapabilitySource,
+    ExecResult,
     FsCapability,
     QueryContext,
     SandboxState,
     SupportInfo,
     apply,
     is_supported,
+    sandboxed_exec,
     support_info,
 )
 
@@ -43,12 +45,14 @@ __all__ = [
     "AccessMode",
     "CapabilitySet",
     "CapabilitySource",
+    "ExecResult",
     "FsCapability",
     "QueryContext",
     "SandboxState",
     "SupportInfo",
     "apply",
     "is_supported",
+    "sandboxed_exec",
     "support_info",
 ]
 

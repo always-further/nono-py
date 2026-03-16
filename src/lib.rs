@@ -14,6 +14,8 @@ use pyo3::exceptions::{
 use pyo3::prelude::*;
 use std::path::Path;
 
+mod sandboxed_exec;
+
 // ---------------------------------------------------------------------------
 // Error mapping
 // ---------------------------------------------------------------------------
@@ -678,8 +680,10 @@ fn _nono_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SupportInfo>()?;
     m.add_class::<SandboxState>()?;
     m.add_class::<QueryContext>()?;
+    m.add_class::<sandboxed_exec::ExecResult>()?;
     m.add_function(wrap_pyfunction!(apply, m)?)?;
     m.add_function(wrap_pyfunction!(is_supported, m)?)?;
     m.add_function(wrap_pyfunction!(support_info, m)?)?;
+    m.add_function(wrap_pyfunction!(sandboxed_exec::sandboxed_exec, m)?)?;
     Ok(())
 }
