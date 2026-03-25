@@ -40,7 +40,7 @@ def build_caps(policy_path: Path, project_dir: Path) -> CapabilitySet:
     caps.allow_path(str(project_dir), AccessMode.READ_WRITE)
 
     resolved = policy.resolve_groups(
-        ["system_tmp_read", "deny_secrets", "dangerous_commands"],
+        ["system_tmp_read", "deny_secrets"],
         caps,
     )
 
@@ -90,15 +90,15 @@ def main() -> None:
     print(f"   stderr: {result.stderr.decode().strip()}")
     print()
 
-    print("3. Blocked dangerous command:")
-    try:
-        sandboxed_exec(
-            caps,
-            ["rm", "-f", str(project_dir / "should-not-delete.txt")],
-            cwd=str(project_dir),
-        )
-    except PermissionError as exc:
-        print(f"   blocked before launch: {exc}")
+    print("3. Writes remain allowed inside granted directories:")
+    target = project_dir / "sandbox-write.txt"
+    result = sandboxed_exec(
+        caps,
+        ["sh", "-c", f"printf 'sandbox write\\n' > {target}"],
+        cwd=str(project_dir),
+    )
+    print(f"   exit_code: {result.exit_code}")
+    print(f"   wrote file: {target.exists()}")
 
 
 if __name__ == "__main__":

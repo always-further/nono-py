@@ -101,10 +101,6 @@ caps.allow_file("/etc/hosts", AccessMode.READ)
 # Block network
 caps.block_network()
 
-# Add command to allow/block lists
-caps.allow_command("git")
-caps.block_command("rm")
-
 # Add platform-specific rule (macOS Seatbelt)
 caps.platform_rule("(allow mach-lookup (global-name \"com.apple.system.logger\"))")
 

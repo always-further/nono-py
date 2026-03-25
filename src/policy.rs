@@ -46,8 +46,6 @@ pub struct DenyOps {
     pub unlink: bool,
     #[serde(default)]
     pub unlink_override_for_user_writable: bool,
-    #[serde(default)]
-    pub commands: Vec<String>,
 }
 
 #[pyclass(name = "Policy")]
@@ -200,15 +198,16 @@ pub fn validate_deny_overlaps(deny_paths: &[PathBuf], caps: &CapabilitySet) -> N
             if cap.is_file {
                 continue;
             }
-            if deny_path.starts_with(&cap.resolved) && *deny_path != cap.resolved {
-                if cap.source.is_user_intent() {
-                    fatal_conflicts.push(format!(
-                        "deny '{}' overlaps allowed parent '{}' (source: {})",
-                        deny_path.display(),
-                        cap.resolved.display(),
-                        cap.source
-                    ));
-                }
+            if deny_path.starts_with(&cap.resolved)
+                && *deny_path != cap.resolved
+                && cap.source.is_user_intent()
+            {
+                fatal_conflicts.push(format!(
+                    "deny '{}' overlaps allowed parent '{}' (source: {})",
+                    deny_path.display(),
+                    cap.resolved.display(),
+                    cap.source
+                ));
             }
         }
     }
@@ -311,10 +310,6 @@ fn resolve_single_group(
 
         if deny.unlink_override_for_user_writable {
             needs_unlink_overrides = true;
-        }
-
-        for command in &deny.commands {
-            caps.inner.add_blocked_command(command.clone());
         }
     }
 

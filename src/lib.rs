@@ -226,8 +226,8 @@ impl FsCapability {
 /// A collection of capabilities that define sandbox permissions.
 ///
 /// Use this class to build up the set of permissions that will be granted
-/// when the sandbox is applied. Capabilities include filesystem access,
-/// network access control, and command filtering.
+/// when the sandbox is applied. Capabilities include filesystem access
+/// and network access control.
 ///
 /// Example:
 ///     >>> caps = CapabilitySet()
@@ -292,26 +292,6 @@ impl CapabilitySet {
     /// Once applied, the sandboxed process cannot make any network connections.
     fn block_network(&mut self) {
         self.inner.set_network_blocked(true);
-    }
-
-    /// Add a command to the allow list.
-    ///
-    /// Commands on the allow list override the block list.
-    ///
-    /// Args:
-    ///     cmd: Command name to allow
-    fn allow_command(&mut self, cmd: &str) {
-        self.inner.add_allowed_command(cmd);
-    }
-
-    /// Add a command to the block list.
-    ///
-    /// Blocked commands will be denied unless also on the allow list.
-    ///
-    /// Args:
-    ///     cmd: Command name to block
-    fn block_command(&mut self, cmd: &str) {
-        self.inner.add_blocked_command(cmd);
     }
 
     /// Add a raw platform-specific sandbox rule.

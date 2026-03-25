@@ -29,7 +29,7 @@ def main() -> None:
 
     caps = CapabilitySet()
     resolved = policy.resolve_groups(
-        ["system_tmp_read", "deny_secrets", "dangerous_commands"],
+        ["system_tmp_read", "deny_secrets"],
         caps,
     )
 

@@ -104,14 +104,6 @@ class CapabilitySet:
         """Block all outbound network access."""
         ...
 
-    def allow_command(self, cmd: str) -> None:
-        """Add a command to the allow list."""
-        ...
-
-    def block_command(self, cmd: str) -> None:
-        """Add a command to the block list."""
-        ...
-
     def platform_rule(self, rule: str) -> None:
         """Add a raw platform-specific sandbox rule.
 
@@ -157,7 +149,7 @@ class Policy:
         """Return a group's description if it exists."""
         ...
 
-    def resolve_groups(self, group_names: list[str], caps: CapabilitySet) -> "ResolvedPolicy":
+    def resolve_groups(self, group_names: list[str], caps: CapabilitySet) -> ResolvedPolicy:
         """Resolve named policy groups into a capability set."""
         ...
 

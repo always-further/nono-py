@@ -28,15 +28,6 @@
           "~/.aws"
         ]
       }
-    },
-    "dangerous_commands": {
-      "description": "Block obviously destructive commands",
-      "deny": {
-        "commands": [
-          "rm",
-          "dd"
-        ]
-      }
     }
   }
 }
