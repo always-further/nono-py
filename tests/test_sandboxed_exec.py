@@ -162,3 +162,27 @@ class TestSandboxedExec:
                 ["nonexistent_command_xyz"],
                 cwd=str(temp_dir),
             )
+
+    def test_blocked_command_is_rejected(self, base_caps, temp_dir):
+        """Blocked commands are rejected before launch."""
+        base_caps.block_command("rm")
+
+        with pytest.raises(PermissionError, match="Command 'rm' is blocked by policy"):
+            sandboxed_exec(
+                base_caps,
+                ["rm", "-f", str(temp_dir / "x.txt")],
+                cwd=str(temp_dir),
+            )
+
+    def test_allowed_command_overrides_blocklist(self, base_caps, temp_dir):
+        """Explicit allow entries win over the blocklist."""
+        base_caps.block_command("echo")
+        base_caps.allow_command("echo")
+
+        result = sandboxed_exec(
+            base_caps,
+            ["echo", "allowed"],
+            cwd=str(temp_dir),
+        )
+        assert result.exit_code == 0
+        assert result.stdout.strip() == b"allowed"

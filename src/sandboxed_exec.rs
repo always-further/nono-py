@@ -7,7 +7,7 @@
 
 use crate::CapabilitySet;
 use nono::Sandbox;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyPermissionError, PyRuntimeError};
 use pyo3::prelude::*;
 use std::ffi::CString;
 use std::io::Read;
@@ -146,6 +146,7 @@ fn prepare_fork_context(
     env: Option<Vec<(String, String)>>,
 ) -> PyResult<ForkContext> {
     let resolved_program = resolve_program(&command[0])?;
+    validate_command_policy(caps, &resolved_program)?;
     let program_c = CString::new(resolved_program.as_os_str().as_bytes())
         .map_err(|_| PyRuntimeError::new_err("Program path contains null byte"))?;
 
@@ -180,6 +181,34 @@ fn prepare_fork_context(
         cwd_c,
         timeout_secs,
     })
+}
+
+fn validate_command_policy(caps: &nono::CapabilitySet, program: &Path) -> PyResult<()> {
+    let command_name = program
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| PyRuntimeError::new_err("Program path contains non-UTF-8 bytes"))?;
+
+    if caps
+        .allowed_commands()
+        .iter()
+        .any(|allowed| allowed == command_name)
+    {
+        return Ok(());
+    }
+
+    if caps
+        .blocked_commands()
+        .iter()
+        .any(|blocked| blocked == command_name)
+    {
+        return Err(PyPermissionError::new_err(format!(
+            "Command '{}' is blocked by policy",
+            command_name
+        )));
+    }
+
+    Ok(())
 }
 
 /// Build environment CStrings from current env + overrides.

@@ -163,6 +163,24 @@ print(info.platform)      # "linux" or "macos"
 print(info.details)       # Human-readable details
 ```
 
+#### `Policy`
+
+Load a `policy.json` document and resolve named groups into a `CapabilitySet`:
+
+```python
+from pathlib import Path
+
+from nono_py import CapabilitySet, load_policy
+
+policy = load_policy(Path("examples/policy_example.json").read_text())
+caps = CapabilitySet()
+resolved = policy.resolve_groups(["system_tmp_read", "deny_secrets"], caps)
+
+print(resolved.names)
+print(resolved.deny_paths)
+print(caps.summary())
+```
+
 ### Functions
 
 #### `apply(caps: CapabilitySet) -> None`
@@ -176,6 +194,14 @@ Check if sandboxing is supported on this platform.
 #### `support_info() -> SupportInfo`
 
 Get detailed platform support information.
+
+#### `load_policy(json: str) -> Policy`
+
+Parse a `policy.json` document.
+
+#### `load_embedded_policy() -> Policy`
+
+Load the bundled nono policy shipped with the package.
 
 ## Platform Support
 

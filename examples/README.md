@@ -69,6 +69,26 @@ platform support issues.
 python examples/07_error_handling.py
 ```
 
+### 09_policy_loading.py
+
+Load a `policy.json` document, resolve named groups into a `CapabilitySet`,
+and inspect the resulting permissions without applying the sandbox.
+
+The matching example policy file lives at `examples/policy_example.json`.
+
+```bash
+python examples/09_policy_loading.py
+```
+
+### 10_policy_enforced.py
+
+Resolve a policy and enforce it in child processes using `sandboxed_exec()`.
+This shows a permitted read, a denied read, and a blocked command.
+
+```bash
+python examples/10_policy_enforced.py
+```
+
 ## Running Examples
 
 All examples can be run directly:
