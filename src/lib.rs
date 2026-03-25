@@ -656,8 +656,8 @@ fn embedded_policy_json() -> &'static str {
 
 /// Apply post-resolution unlink override rules for writable paths.
 #[pyfunction]
-fn apply_unlink_overrides(caps: &mut CapabilitySet) {
-    policy::apply_unlink_overrides(caps);
+fn apply_unlink_overrides(caps: &mut CapabilitySet) -> PyResult<()> {
+    policy::apply_unlink_overrides(caps).map_err(to_py_err)
 }
 
 /// Validate deny.access paths against the final capability set.

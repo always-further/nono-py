@@ -225,9 +225,9 @@ pub fn validate_deny_overlaps(deny_paths: &[PathBuf], caps: &CapabilitySet) -> N
     )))
 }
 
-pub fn apply_unlink_overrides(caps: &mut CapabilitySet) {
+pub fn apply_unlink_overrides(caps: &mut CapabilitySet) -> NonoResult<()> {
     if cfg!(target_os = "linux") {
-        return;
+        return Ok(());
     }
 
     let writable_paths: Vec<PathBuf> = caps
@@ -240,17 +240,15 @@ pub fn apply_unlink_overrides(caps: &mut CapabilitySet) {
         .collect();
 
     for path in writable_paths {
-        let Ok(path_str) = path_to_utf8(&path) else {
-            continue;
-        };
-        let Ok(escaped) = escape_seatbelt_path(path_str) else {
-            continue;
-        };
-        let _ = caps.inner.add_platform_rule(format!(
+        let path_str = path_to_utf8(&path)?;
+        let escaped = escape_seatbelt_path(path_str)?;
+        caps.inner.add_platform_rule(format!(
             "(allow file-write-unlink (subpath \"{}\"))",
             escaped
-        ));
+        ))?;
     }
+
+    Ok(())
 }
 
 pub fn validate_group_exclusions(
@@ -361,7 +359,16 @@ fn add_deny_access_rules(
     let path = expand_path(path_str)?;
     deny_paths.push(path.clone());
 
-    let canonical = path.canonicalize().ok();
+    let canonical = match path.canonicalize() {
+        Ok(p) => Some(p),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(NonoError::PathCanonicalization {
+                path: path.to_path_buf(),
+                source: e,
+            });
+        }
+    };
     if let Some(ref canonical) = canonical {
         if *canonical != path {
             deny_paths.push(canonical.clone());
