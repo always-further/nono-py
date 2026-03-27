@@ -296,6 +296,10 @@ the main nono profile format:
 - Canonical key: `network.allow_domain`
 - Accepted aliases: `network.allow_proxy`, `network.proxy_allow`
 
+If multiple groups specify different `upstream_proxy` / `external_proxy`
+values, resolution fails with `ValueError` instead of silently overwriting the
+earlier proxy.
+
 ---
 
 ## load_embedded_policy

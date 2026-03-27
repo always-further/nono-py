@@ -260,6 +260,7 @@ pub fn resolve_proxy_config_impl(
     let mut seen_hosts = HashSet::new();
     let mut routes = Vec::new();
     let mut upstream_proxy: Option<String> = None;
+    let mut upstream_proxy_group: Option<String> = None;
     let mut upstream_bypass = Vec::new();
     let mut seen_bypass = HashSet::new();
     let mut max_connections: Option<usize> = None;
@@ -293,7 +294,20 @@ pub fn resolve_proxy_config_impl(
         routes.extend(network.custom_credentials.values().cloned().map(Into::into));
 
         if let Some(proxy) = &network.upstream_proxy {
-            upstream_proxy = Some(proxy.clone());
+            if let Some(existing) = &upstream_proxy {
+                if existing != proxy {
+                    return Err(NonoError::ConfigParse(format!(
+                        "Conflicting upstream_proxy values in policy groups: '{}' sets '{}', but '{}' sets '{}'",
+                        upstream_proxy_group.as_deref().unwrap_or("<unknown>"),
+                        existing,
+                        name,
+                        proxy
+                    )));
+                }
+            } else {
+                upstream_proxy = Some(proxy.clone());
+                upstream_proxy_group = Some(name.clone());
+            }
         }
 
         for host in &network.upstream_bypass {

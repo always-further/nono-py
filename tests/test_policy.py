@@ -243,6 +243,28 @@ class TestPolicyResolution:
 
         assert policy.resolve_proxy_config(["offline"]) is None
 
+    def test_resolve_proxy_config_rejects_conflicting_upstream_proxies(self) -> None:
+        """Multiple groups cannot silently overwrite different upstream proxies."""
+        policy = load_policy(
+            json.dumps(
+                {
+                    "groups": {
+                        "corp_a": {
+                            "description": "First upstream proxy",
+                            "network": {"external_proxy": "proxy-a.corp:3128"},
+                        },
+                        "corp_b": {
+                            "description": "Conflicting upstream proxy",
+                            "network": {"external_proxy": "proxy-b.corp:3128"},
+                        },
+                    }
+                }
+            )
+        )
+
+        with pytest.raises(ValueError, match="Conflicting upstream_proxy values"):
+            policy.resolve_proxy_config(["corp_a", "corp_b"])
+
 
 class TestPolicyHelpers:
     """Tests for post-resolution helpers."""

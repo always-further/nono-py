@@ -2,20 +2,16 @@
 """Proxy basics with a sandboxed child process.
 
 Demonstrates starting the nono proxy, injecting its environment into a
-sandboxed child, and showing both an allowed and denied outbound request.
+    sandboxed child, and showing both an allowed and blocked outbound request.
 
 The child still runs under OS-enforced sandboxing for filesystem/process
 isolation, while the proxy handles domain-level allow/deny behavior.
 """
 
-import contextlib
-import os
 import sys
 import tempfile
 
 from nono_py import (
-    AccessMode,
-    CapabilitySet,
     InjectMode,
     ProxyConfig,
     RouteConfig,
@@ -23,44 +19,7 @@ from nono_py import (
     sandboxed_exec,
     start_proxy,
 )
-
-
-def build_caps(workdir: str) -> CapabilitySet:
-    """Build sandbox capabilities for a child that uses the proxy."""
-    caps = CapabilitySet()
-
-    for sys_path in ["/usr", "/bin", "/sbin", "/lib"]:
-        with contextlib.suppress(FileNotFoundError):
-            caps.allow_path(sys_path, AccessMode.READ)
-
-    for sys_path in ["/private", "/Library/Frameworks", "/dev"]:
-        with contextlib.suppress(FileNotFoundError):
-            caps.allow_path(sys_path, AccessMode.READ)
-
-    caps.allow_path(workdir, AccessMode.READ_WRITE)
-
-    runtime_paths = {
-        sys.prefix,
-        sys.base_prefix,
-        os.path.dirname(sys.executable),
-    }
-    real_executable = os.path.realpath(sys.executable)
-    runtime_paths.add(os.path.dirname(real_executable))
-    runtime_paths.add(os.path.dirname(os.path.dirname(real_executable)))
-    runtime_paths.add(os.path.normpath(os.path.join(os.path.dirname(real_executable), "..", "lib")))
-
-    for runtime_path in runtime_paths:
-        with contextlib.suppress(FileNotFoundError):
-            caps.allow_path(runtime_path, AccessMode.READ)
-
-    import nono_py
-
-    module_file = nono_py.__file__
-    if module_file is None:
-        raise RuntimeError("nono_py.__file__ is unavailable")
-    caps.allow_path(os.path.dirname(module_file), AccessMode.READ)
-
-    return caps
+from proxy_demo_support import PROXY_DEMO_CHILD_CODE, build_proxy_child_caps
 
 
 def main() -> None:
@@ -90,35 +49,11 @@ def main() -> None:
 
         print("\n4. Running a sandboxed child through the proxy:")
         with tempfile.TemporaryDirectory() as workdir:
-            caps = build_caps(workdir)
+            caps = build_proxy_child_caps(workdir)
             child_env = list(env.items()) + list(proxy.credential_env_vars().items())
-            child_code = """
-import os
-import urllib.request
-
-proxy_url = os.environ["HTTP_PROXY"]
-opener = urllib.request.build_opener(
-    urllib.request.ProxyHandler({
-        "http": proxy_url,
-        "https": os.environ["HTTPS_PROXY"],
-    })
-)
-
-targets = [
-    ("allowed", "https://example.com"),
-    ("denied", "https://evil.com"),
-]
-
-for label, url in targets:
-    try:
-        with opener.open(url, timeout=5) as response:
-            print(f"{label}: status={response.status} url={url}")
-    except Exception as exc:
-        print(f"{label}: error={type(exc).__name__}: {exc}")
-"""
             result = sandboxed_exec(
                 caps,
-                [sys.executable, "-c", child_code],
+                [sys.executable, "-c", PROXY_DEMO_CHILD_CODE],
                 cwd=workdir,
                 env=child_env,
                 timeout_secs=10.0,
