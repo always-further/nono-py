@@ -11,6 +11,8 @@ isolation, while the proxy handles domain-level allow/deny behavior.
 import sys
 import tempfile
 
+from proxy_demo_support import PROXY_DEMO_CHILD_CODE, build_proxy_child_caps
+
 from nono_py import (
     InjectMode,
     ProxyConfig,
@@ -19,7 +21,6 @@ from nono_py import (
     sandboxed_exec,
     start_proxy,
 )
-from proxy_demo_support import PROXY_DEMO_CHILD_CODE, build_proxy_child_caps
 
 
 def main() -> None:
