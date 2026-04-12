@@ -1,6 +1,8 @@
 use crate::{proxy::ProxyConfig, CapabilitySet};
 use nono::{AccessMode, CapabilitySource, FsCapability, NonoError, Result as NonoResult};
-use nono_proxy::config::{InjectMode as RustInjectMode, RouteConfig as RustRouteConfig};
+use nono_proxy::config::{
+    EndpointRule as RustEndpointRule, InjectMode as RustInjectMode, RouteConfig as RustRouteConfig,
+};
 use nono_proxy::ProxyConfig as RustProxyConfig;
 use pyo3::prelude::*;
 use serde::Deserialize;
@@ -96,6 +98,29 @@ pub struct PolicyRouteConfig {
     pub query_param_name: Option<String>,
     #[serde(default)]
     pub env_var: Option<String>,
+    #[serde(default)]
+    pub endpoint_rules: Vec<PolicyEndpointRule>,
+    #[serde(default)]
+    pub tls_ca: Option<String>,
+    #[serde(default)]
+    pub tls_client_cert: Option<String>,
+    #[serde(default)]
+    pub tls_client_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PolicyEndpointRule {
+    pub method: String,
+    pub path: String,
+}
+
+impl From<PolicyEndpointRule> for RustEndpointRule {
+    fn from(rule: PolicyEndpointRule) -> Self {
+        Self {
+            method: rule.method,
+            path: rule.path,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -730,6 +755,10 @@ impl From<PolicyRouteConfig> for RustRouteConfig {
             path_replacement: route.path_replacement,
             query_param_name: route.query_param_name,
             env_var: route.env_var,
+            endpoint_rules: route.endpoint_rules.into_iter().map(Into::into).collect(),
+            tls_ca: route.tls_ca,
+            tls_client_cert: route.tls_client_cert,
+            tls_client_key: route.tls_client_key,
         }
     }
 }

@@ -5,8 +5,8 @@
 //! background tokio runtime and is controlled synchronously from Python.
 
 use nono_proxy::config::{
-    ExternalProxyConfig as RustExternalProxyConfig, InjectMode as RustInjectMode,
-    RouteConfig as RustRouteConfig,
+    EndpointRule as RustEndpointRule, ExternalProxyConfig as RustExternalProxyConfig,
+    InjectMode as RustInjectMode, RouteConfig as RustRouteConfig,
 };
 use nono_proxy::ProxyConfig as RustProxyConfig;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -104,6 +104,10 @@ impl RouteConfig {
         path_replacement = None,
         query_param_name = None,
         env_var = None,
+        endpoint_rules = vec![],
+        tls_ca = None,
+        tls_client_cert = None,
+        tls_client_key = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -117,6 +121,10 @@ impl RouteConfig {
         path_replacement: Option<String>,
         query_param_name: Option<String>,
         env_var: Option<String>,
+        endpoint_rules: Vec<(String, String)>,
+        tls_ca: Option<String>,
+        tls_client_cert: Option<String>,
+        tls_client_key: Option<String>,
     ) -> Self {
         Self {
             inner: RustRouteConfig {
@@ -130,6 +138,13 @@ impl RouteConfig {
                 path_replacement,
                 query_param_name,
                 env_var,
+                endpoint_rules: endpoint_rules
+                    .into_iter()
+                    .map(|(method, path)| RustEndpointRule { method, path })
+                    .collect(),
+                tls_ca,
+                tls_client_cert,
+                tls_client_key,
             },
         }
     }
@@ -182,6 +197,30 @@ impl RouteConfig {
     #[getter]
     fn env_var(&self) -> Option<&str> {
         self.inner.env_var.as_deref()
+    }
+
+    #[getter]
+    fn endpoint_rules(&self) -> Vec<(String, String)> {
+        self.inner
+            .endpoint_rules
+            .iter()
+            .map(|r| (r.method.clone(), r.path.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn tls_ca(&self) -> Option<&str> {
+        self.inner.tls_ca.as_deref()
+    }
+
+    #[getter]
+    fn tls_client_cert(&self) -> Option<&str> {
+        self.inner.tls_client_cert.as_deref()
+    }
+
+    #[getter]
+    fn tls_client_key(&self) -> Option<&str> {
+        self.inner.tls_client_key.as_deref()
     }
 
     fn __repr__(&self) -> String {
