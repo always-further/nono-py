@@ -48,8 +48,8 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           # Update nono and nono-proxy crate dependencies
-          sed -i "s/^nono = \"[0-9.]*\"/nono = \"${VERSION}\"/" Cargo.toml
-          sed -i "s/^nono-proxy = \"[0-9.]*\"/nono-proxy = \"${VERSION}\"/" Cargo.toml
+          sed -i "s/^nono[[:space:]]*=[[:space:]]*\"[^\"]*\"/nono = \"${VERSION}\"/" Cargo.toml
+          sed -i "s/^nono-proxy[[:space:]]*=[[:space:]]*\"[^\"]*\"/nono-proxy = \"${VERSION}\"/" Cargo.toml
 
       - name: Create Pull Request
         if: steps.check.outputs.skip != 'true'
