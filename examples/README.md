@@ -102,6 +102,16 @@ blocked HTTPS domain.
 python examples/12_policy_proxy.py
 ```
 
+### 14_audit_to_s3.py
+
+Stream proxy audit events to an S3-compatible sink via a background
+drainer. Uses an in-memory fake S3 client so the example runs offline;
+swap in `boto3.client("s3")` to ship to real S3.
+
+```bash
+python examples/14_audit_to_s3.py
+```
+
 ## Running Examples
 
 All examples can be run directly:
