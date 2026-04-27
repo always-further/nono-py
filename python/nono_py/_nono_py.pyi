@@ -635,12 +635,42 @@ class SessionMetadata:
     def merkle_roots(self) -> list[ContentHash]: ...
     def add_merkle_root(self, root: ContentHash) -> None: ...
     @property
+    def executable_identity(self) -> ExecutableIdentity | None: ...
+    @property
+    def audit_event_count(self) -> int: ...
+    @property
+    def audit_integrity(self) -> AuditIntegritySummary | None: ...
+    @property
+    def audit_attestation(self) -> AuditAttestationSummary | None: ...
+    @property
     def network_events(self) -> list[NetworkAuditEvent]: ...
     def set_network_events(self, events: list[NetworkAuditEvent]) -> None: ...
     def to_json(self) -> str: ...
     @staticmethod
     def from_json(json: str) -> SessionMetadata: ...
     def __repr__(self) -> str: ...
+
+class ExecutableIdentity(TypedDict):
+    """Canonical identity of the executable launched for a session."""
+
+    resolved_path: str
+    sha256: str  # 64-char hex SHA-256
+
+class AuditIntegritySummary(TypedDict):
+    """Append-only audit log integrity metadata."""
+
+    hash_algorithm: str
+    event_count: int
+    chain_head: str  # 64-char hex
+    merkle_root: str  # 64-char hex
+
+class AuditAttestationSummary(TypedDict):
+    """Signed attestation metadata for an audit session."""
+
+    predicate_type: str
+    key_id: str
+    public_key: str  # base64 DER
+    bundle_filename: str
 
 class SnapshotManager:
     """Manages content-addressable filesystem snapshots for a session."""
