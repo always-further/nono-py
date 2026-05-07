@@ -106,7 +106,7 @@ def main() -> None:
         # proxy_only() restricts kernel-level network to only allow
         # localhost:proxy_port — child must go through the proxy
         caps.proxy_only(proxy)
-        env = list(proxy.env_vars().items())
+        env = proxy.sandbox_env()
 
         # The child will:
         #   a) Modify data.txt

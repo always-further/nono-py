@@ -432,6 +432,16 @@ impl ProxyHandle {
         })
     }
 
+    /// All environment variables needed for a sandboxed child process.
+    ///
+    /// Combines ``env_vars()`` (HTTP_PROXY, HTTPS_PROXY, etc.) with
+    /// ``credential_env_vars()`` (route-specific base URLs and tokens)
+    /// into a single list of (key, value) tuples suitable for passing
+    /// directly to ``sandboxed_exec(env=...)``.
+    fn sandbox_env(&self) -> Vec<(String, String)> {
+        self.all_env_vars()
+    }
+
     /// Drain and return collected network audit events.
     ///
     /// Returns a list of dicts, each representing a network request

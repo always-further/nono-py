@@ -314,7 +314,7 @@ impl CapabilitySet {
     ///     >>> caps = CapabilitySet()
     ///     >>> caps.allow_path("/usr", AccessMode.READ)
     ///     >>> caps.proxy_only(proxy)
-    ///     >>> env = list(proxy.env_vars().items())
+    ///     >>> env = proxy.sandbox_env()
     ///     >>> result = sandboxed_exec(caps, ["curl", "https://example.com"], env=env)
     ///     >>> proxy.shutdown()
     fn proxy_only(&mut self, proxy: &proxy::ProxyHandle) {

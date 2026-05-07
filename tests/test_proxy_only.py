@@ -91,7 +91,7 @@ class TestProxyOnlySandboxedExec:
     def test_child_can_connect_to_proxy(self, proxy, temp_dir) -> None:
         """Child process can reach the proxy on localhost."""
         caps = self._make_caps(temp_dir, proxy)
-        env = list(proxy.env_vars().items())
+        env = proxy.sandbox_env()
 
         result = sandboxed_exec(
             caps,
@@ -134,7 +134,7 @@ class TestProxyOnlySandboxedExec:
     def test_proxy_filters_blocked_domain(self, proxy, temp_dir) -> None:
         """Proxy denies connections to domains not in the allowlist."""
         caps = self._make_caps(temp_dir, proxy)
-        env = list(proxy.env_vars().items())
+        env = proxy.sandbox_env()
 
         result = sandboxed_exec(
             caps,
@@ -163,7 +163,7 @@ class TestProxyOnlySandboxedExec:
     def test_audit_events_recorded(self, proxy, temp_dir) -> None:
         """Proxy records audit events for connection attempts."""
         caps = self._make_caps(temp_dir, proxy)
-        env = list(proxy.env_vars().items())
+        env = proxy.sandbox_env()
 
         sandboxed_exec(
             caps,
