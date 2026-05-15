@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from conftest import add_system_paths
+from utils import add_system_paths
 
 from nono_py import (
     AccessMode,
@@ -22,16 +22,6 @@ from nono_py.audit import (
     session_started,
     verify_log,
 )
-
-
-@pytest.mark.smoke
-def test_module_imports() -> None:
-    """nono_py and nono_py.audit are importable."""
-    import nono_py
-    import nono_py.audit
-
-    assert nono_py is not None
-    assert nono_py.audit is not None
 
 
 @pytest.mark.smoke

@@ -104,7 +104,6 @@ class TestRestore:
         diff = mgr.compute_restore_diff(0)
 
         assert len(diff) > 0
-        # File is still overwritten — compute_restore_diff is read-only.
         assert target.read_text() == "overwritten"
 
 

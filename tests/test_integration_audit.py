@@ -60,9 +60,7 @@ class TestIterSession:
         """Write three records, read them back in order, verify integrity."""
         recorder = AlphaRecorder()
         with _audit_file(session_dir).open("w") as fh:
-            recorder.write(
-                fh, session_started(started="2024-01-01T00:00:00Z", command=["pytest"])
-            )
+            recorder.write(fh, session_started(started="2024-01-01T00:00:00Z", command=["pytest"]))
             recorder.write(
                 fh,
                 capability_decision(
@@ -94,9 +92,7 @@ class TestIterSession:
         """All five event variants pass verification and are readable."""
         recorder = AlphaRecorder()
         with _audit_file(session_dir).open("w") as fh:
-            recorder.write(
-                fh, session_started(started="2024-01-01T00:00:00Z", command=["test"])
-            )
+            recorder.write(fh, session_started(started="2024-01-01T00:00:00Z", command=["test"]))
             recorder.write(
                 fh,
                 capability_decision(
@@ -153,9 +149,7 @@ class TestVerifyLog:
         """Computed chain_head and merkle_root match when passed as stored summary."""
         recorder = AlphaRecorder()
         with _audit_file(session_dir).open("w") as fh:
-            recorder.write(
-                fh, session_started(started="2024-01-01T00:00:00Z", command=["test"])
-            )
+            recorder.write(fh, session_started(started="2024-01-01T00:00:00Z", command=["test"]))
             recorder.write(fh, session_ended(ended="2024-01-01T00:00:01Z", exit_code=0))
 
         first = verify_log(session_dir)
@@ -173,9 +167,7 @@ class TestVerifyLog:
         """A corrupt sequence field raises VerificationError."""
         recorder = AlphaRecorder()
         with _audit_file(session_dir).open("w") as fh:
-            recorder.write(
-                fh, session_started(started="2024-01-01T00:00:00Z", command=["test"])
-            )
+            recorder.write(fh, session_started(started="2024-01-01T00:00:00Z", command=["test"]))
         data = json.loads(_audit_file(session_dir).read_text())
         data["sequence"] = 999
         _audit_file(session_dir).write_text(json.dumps(data, separators=(",", ":")) + "\n")
@@ -186,9 +178,7 @@ class TestVerifyLog:
         """A corrupt chain_hash raises VerificationError."""
         recorder = AlphaRecorder()
         with _audit_file(session_dir).open("w") as fh:
-            recorder.write(
-                fh, session_started(started="2024-01-01T00:00:00Z", command=["test"])
-            )
+            recorder.write(fh, session_started(started="2024-01-01T00:00:00Z", command=["test"]))
         data = json.loads(_audit_file(session_dir).read_text())
         data["chain_hash"] = "a" * 64
         _audit_file(session_dir).write_text(json.dumps(data, separators=(",", ":")) + "\n")
@@ -202,9 +192,7 @@ class TestTailSession:
         """tail_session yields pre-written records before the stop_event fires."""
         recorder = AlphaRecorder()
         with _audit_file(session_dir).open("w") as fh:
-            recorder.write(
-                fh, session_started(started="2024-01-01T00:00:00Z", command=["test"])
-            )
+            recorder.write(fh, session_started(started="2024-01-01T00:00:00Z", command=["test"]))
             recorder.write(fh, session_ended(ended="2024-01-01T00:00:01Z", exit_code=0))
 
         stop = threading.Event()
@@ -216,7 +204,10 @@ class TestTailSession:
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
-        time.sleep(0.2)
+
+        deadline = time.monotonic() + 2.0
+        while len(collected) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
         stop.set()
         t.join(timeout=2.0)
 
