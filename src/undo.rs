@@ -520,23 +520,35 @@ impl SessionMetadata {
                         .and_then(|v| v.extract::<String>().ok())
                         .map(|s| match s.as_str() {
                             "proxy_authorization" => {
-                                nono::undo::NetworkAuditAuthMechanism::ProxyAuthorization
+                                Ok(nono::undo::NetworkAuditAuthMechanism::ProxyAuthorization)
                             }
                             "phantom_header" => {
-                                nono::undo::NetworkAuditAuthMechanism::PhantomHeader
+                                Ok(nono::undo::NetworkAuditAuthMechanism::PhantomHeader)
                             }
-                            "phantom_path" => nono::undo::NetworkAuditAuthMechanism::PhantomPath,
-                            "phantom_query" => nono::undo::NetworkAuditAuthMechanism::PhantomQuery,
-                            _ => nono::undo::NetworkAuditAuthMechanism::ProxyAuthorization,
-                        }),
+                            "phantom_path" => {
+                                Ok(nono::undo::NetworkAuditAuthMechanism::PhantomPath)
+                            }
+                            "phantom_query" => {
+                                Ok(nono::undo::NetworkAuditAuthMechanism::PhantomQuery)
+                            }
+                            other => Err(PyValueError::new_err(format!(
+                                "invalid auth_mechanism: {}",
+                                other
+                            ))),
+                        })
+                        .transpose()?,
                     auth_outcome: dict
                         .get_item("auth_outcome")?
                         .and_then(|v| v.extract::<String>().ok())
                         .map(|s| match s.as_str() {
-                            "succeeded" => nono::undo::NetworkAuditAuthOutcome::Succeeded,
-                            "failed" => nono::undo::NetworkAuditAuthOutcome::Failed,
-                            _ => nono::undo::NetworkAuditAuthOutcome::Failed,
-                        }),
+                            "succeeded" => Ok(nono::undo::NetworkAuditAuthOutcome::Succeeded),
+                            "failed" => Ok(nono::undo::NetworkAuditAuthOutcome::Failed),
+                            other => Err(PyValueError::new_err(format!(
+                                "invalid auth_outcome: {}",
+                                other
+                            ))),
+                        })
+                        .transpose()?,
                     managed_credential_active: dict
                         .get_item("managed_credential_active")?
                         .and_then(|v| v.extract().ok()),
@@ -544,41 +556,51 @@ impl SessionMetadata {
                         .get_item("injection_mode")?
                         .and_then(|v| v.extract::<String>().ok())
                         .map(|s| match s.as_str() {
-                            "header" => nono::undo::NetworkAuditInjectionMode::Header,
-                            "url_path" => nono::undo::NetworkAuditInjectionMode::UrlPath,
-                            "query_param" => nono::undo::NetworkAuditInjectionMode::QueryParam,
-                            "basic_auth" => nono::undo::NetworkAuditInjectionMode::BasicAuth,
-                            "oauth2" => nono::undo::NetworkAuditInjectionMode::OAuth2,
-                            _ => nono::undo::NetworkAuditInjectionMode::Header,
-                        }),
+                            "header" => Ok(nono::undo::NetworkAuditInjectionMode::Header),
+                            "url_path" => Ok(nono::undo::NetworkAuditInjectionMode::UrlPath),
+                            "query_param" => Ok(nono::undo::NetworkAuditInjectionMode::QueryParam),
+                            "basic_auth" => Ok(nono::undo::NetworkAuditInjectionMode::BasicAuth),
+                            "oauth2" => Ok(nono::undo::NetworkAuditInjectionMode::OAuth2),
+                            other => Err(PyValueError::new_err(format!(
+                                "invalid injection_mode: {}",
+                                other
+                            ))),
+                        })
+                        .transpose()?,
                     denial_category: dict
                         .get_item("denial_category")?
                         .and_then(|v| v.extract::<String>().ok())
                         .map(|s| match s.as_str() {
                             "authentication_failed" => {
-                                nono::undo::NetworkAuditDenialCategory::AuthenticationFailed
+                                Ok(nono::undo::NetworkAuditDenialCategory::AuthenticationFailed)
                             }
                             "endpoint_policy" => {
-                                nono::undo::NetworkAuditDenialCategory::EndpointPolicy
+                                Ok(nono::undo::NetworkAuditDenialCategory::EndpointPolicy)
                             }
                             "managed_credential_unavailable" => {
-                                nono::undo::NetworkAuditDenialCategory::ManagedCredentialUnavailable
+                                Ok(nono::undo::NetworkAuditDenialCategory::ManagedCredentialUnavailable)
                             }
-                            "host_denied" => nono::undo::NetworkAuditDenialCategory::HostDenied,
+                            "host_denied" => {
+                                Ok(nono::undo::NetworkAuditDenialCategory::HostDenied)
+                            }
                             "intercept_handshake_failed" => {
-                                nono::undo::NetworkAuditDenialCategory::InterceptHandshakeFailed
+                                Ok(nono::undo::NetworkAuditDenialCategory::InterceptHandshakeFailed)
                             }
                             "upstream_connect_failed" => {
-                                nono::undo::NetworkAuditDenialCategory::UpstreamConnectFailed
+                                Ok(nono::undo::NetworkAuditDenialCategory::UpstreamConnectFailed)
                             }
                             "connect_bypasses_l7" => {
-                                nono::undo::NetworkAuditDenialCategory::ConnectBypassesL7
+                                Ok(nono::undo::NetworkAuditDenialCategory::ConnectBypassesL7)
                             }
                             "external_proxy_rejected" => {
-                                nono::undo::NetworkAuditDenialCategory::ExternalProxyRejected
+                                Ok(nono::undo::NetworkAuditDenialCategory::ExternalProxyRejected)
                             }
-                            _ => nono::undo::NetworkAuditDenialCategory::HostDenied,
-                        }),
+                            other => Err(PyValueError::new_err(format!(
+                                "invalid denial_category: {}",
+                                other
+                            ))),
+                        })
+                        .transpose()?,
                 });
             }
             self.inner.network_events = rust_events;
