@@ -46,6 +46,20 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Close superseded bump PRs
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_BRANCH="${{ steps.version.outputs.branch }}"
+          gh pr list --state open --json number,headRefName --jq \
+            ".[] | select(.headRefName | startswith(\"bump-nono-\")) | select(.headRefName != \"${NEW_BRANCH}\") | .number" |
+          while read -r num; do
+            [ -n "$num" ] || continue
+            echo "Closing superseded PR #${num}"
+            gh pr close "${num}" --comment "Superseded by bump to ${{ steps.version.outputs.version }}."
+          done
+
       - name: Update Cargo.toml
         if: steps.check.outputs.skip != 'true'
         run: |
