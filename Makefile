@@ -109,8 +109,7 @@ fmt-check: fmt-check-rust fmt-check-python
 
 # Security
 security:
-	uv run bandit -r python/nono_py
-	uv audit
+	uv audit --preview-features audit
 	cargo audit
 
 # Remove build artifacts
@@ -128,7 +127,7 @@ clean:
 	find . -type f -name "*.so" -delete 2>/dev/null || true
 
 # CI target - run all checks
-ci: fmt-check lint test
+ci: fmt-check lint test security
 
 # Release: make release VERSION=0.4.0
 release:
