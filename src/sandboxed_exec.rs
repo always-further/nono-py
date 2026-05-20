@@ -10,7 +10,7 @@ use nono::Sandbox;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use std::ffi::CString;
-use std::io::Read;
+use std::io::{Read, Result as IoResult};
 use std::os::fd::FromRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -212,6 +212,28 @@ fn build_env_cstrings(overrides: Option<&[(String, String)]>) -> PyResult<Vec<CS
 /// Create a pipe, returning a PipeFds struct.
 fn create_pipe() -> PyResult<PipeFds> {
     let mut fds = [0i32; 2];
+
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: pipe2() is safe with a valid 2-element array. O_CLOEXEC
+        // prevents accidental descriptor inheritance across execve().
+        let ret = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) };
+        if ret == 0 {
+            return Ok(PipeFds {
+                read_fd: fds[0],
+                write_fd: fds[1],
+            });
+        }
+
+        let err = std::io::Error::last_os_error();
+        if !matches!(
+            err.raw_os_error(),
+            Some(code) if code == libc::ENOSYS || code == libc::EINVAL
+        ) {
+            return Err(PyRuntimeError::new_err(format!("pipe2() failed: {}", err)));
+        }
+    }
+
     // SAFETY: pipe() is safe with a valid 2-element array.
     let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
     if ret != 0 {
@@ -220,10 +242,37 @@ fn create_pipe() -> PyResult<PipeFds> {
             std::io::Error::last_os_error()
         )));
     }
+
+    if let Err(e) = set_cloexec(fds[0]).and_then(|_| set_cloexec(fds[1])) {
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+        return Err(PyRuntimeError::new_err(format!(
+            "fcntl(FD_CLOEXEC) failed: {}",
+            e
+        )));
+    }
+
     Ok(PipeFds {
         read_fd: fds[0],
         write_fd: fds[1],
     })
+}
+
+fn set_cloexec(fd: i32) -> IoResult<()> {
+    // SAFETY: fcntl() is safe for a valid fd and does not take ownership.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    if flags < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    // SAFETY: fcntl(F_SETFD) updates only descriptor flags for this fd.
+    let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) };
+    if ret < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// Fork, apply sandbox in child, exec command, capture output in parent.
@@ -296,6 +345,19 @@ fn child_process(
         libc::close(stderr_pipe.write_fd);
     }
 
+    if let Err(e) = close_untrusted_fds() {
+        let detail = format!("nono: failed to close inherited file descriptors: {}\n", e);
+        let msg = detail.as_bytes();
+        unsafe {
+            libc::write(
+                libc::STDERR_FILENO,
+                msg.as_ptr().cast::<libc::c_void>(),
+                msg.len(),
+            );
+            libc::_exit(126);
+        }
+    }
+
     // Change working directory if specified
     if let Some(ref dir) = ctx.cwd_c {
         unsafe {
@@ -342,6 +404,66 @@ fn child_process(
             msg.len(),
         );
         libc::_exit(127);
+    }
+}
+
+/// Close every inherited fd except stdin/stdout/stderr in the forked child.
+///
+/// Open descriptors are capabilities: a sandbox cannot revoke access that was
+/// already represented by an fd before `Sandbox::apply()`. This must run after
+/// stdout/stderr are wired to the capture pipes and before applying the sandbox.
+fn close_untrusted_fds() -> IoResult<()> {
+    #[cfg(target_os = "linux")]
+    {
+        if close_range_from(3).is_ok() {
+            return Ok(());
+        }
+    }
+
+    close_fds_by_rlimit(3);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn close_range_from(first_fd: u32) -> IoResult<()> {
+    // SAFETY: close_range closes descriptors in the requested numeric range.
+    // Starting at fd 3 preserves stdin/stdout/stderr.
+    let ret = unsafe { libc::syscall(libc::SYS_close_range, first_fd, u32::MAX, 0u32) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+fn close_fds_by_rlimit(first_fd: i32) {
+    let max_fd = open_fd_limit();
+    for fd in first_fd..max_fd {
+        // SAFETY: closing an invalid fd is harmless; EBADF is ignored.
+        unsafe {
+            libc::close(fd);
+        }
+    }
+}
+
+fn open_fd_limit() -> i32 {
+    let mut rlimit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+    // SAFETY: getrlimit initializes the provided rlimit on success.
+    let ret = unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, rlimit.as_mut_ptr()) };
+    if ret == 0 {
+        // SAFETY: ret == 0 means getrlimit initialized rlimit.
+        let rlimit = unsafe { rlimit.assume_init() };
+        if rlimit.rlim_cur != libc::RLIM_INFINITY {
+            return rlimit.rlim_cur.min(i32::MAX as libc::rlim_t) as i32;
+        }
+    }
+
+    // SAFETY: sysconf reads a process limit and has no ownership effects.
+    let open_max = unsafe { libc::sysconf(libc::_SC_OPEN_MAX) };
+    if open_max > 0 {
+        open_max.min(i64::from(i32::MAX)) as i32
+    } else {
+        1024
     }
 }
 

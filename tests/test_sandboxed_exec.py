@@ -1,6 +1,7 @@
 """Tests for sandboxed_exec function."""
 
 import os
+import sys
 
 import pytest
 from conftest import add_system_paths
@@ -44,7 +45,7 @@ class TestSandboxedExec:
         """Non-zero exit codes are captured."""
         result = sandboxed_exec(
             base_caps,
-            ["bash", "-c", "exit 42"],
+            [sys.executable, "-c", "raise SystemExit(42)"],
             cwd=str(temp_dir),
         )
         assert result.exit_code == 42
@@ -53,7 +54,11 @@ class TestSandboxedExec:
         """stderr is captured separately from stdout."""
         result = sandboxed_exec(
             base_caps,
-            ["bash", "-c", "echo out; echo err >&2"],
+            [
+                sys.executable,
+                "-c",
+                "import sys; print('out'); print('err', file=sys.stderr)",
+            ],
             cwd=str(temp_dir),
         )
         assert result.exit_code == 0
@@ -62,11 +67,9 @@ class TestSandboxedExec:
 
     def test_cwd(self, base_caps, temp_dir):
         """Working directory is respected."""
-        # Use bash built-in pwd rather than /bin/pwd, which is blocked by
-        # Seatbelt's file-read-metadata restriction on stat(".").
         result = sandboxed_exec(
             base_caps,
-            ["bash", "-c", "pwd"],
+            [sys.executable, "-c", "import os; print(os.getcwd())"],
             cwd=str(temp_dir),
         )
         assert result.exit_code == 0
@@ -78,7 +81,7 @@ class TestSandboxedExec:
         """Environment variable overrides are applied."""
         result = sandboxed_exec(
             base_caps,
-            ["bash", "-c", "echo $MY_VAR"],
+            [sys.executable, "-c", "import os; print(os.environ['MY_VAR'])"],
             cwd=str(temp_dir),
             env=[("MY_VAR", "test_value")],
         )
@@ -98,11 +101,56 @@ class TestSandboxedExec:
         )
         assert result.exit_code != 0
 
+    def test_parent_file_descriptors_are_not_inherited(self, base_caps, temp_dir):
+        """Parent-open fds should not survive into the sandboxed exec child."""
+        secret_path = temp_dir / "parent-only.txt"
+        secret_path.write_text("fd-leak")
+
+        fd = os.open(secret_path, os.O_RDONLY)
+        assert fd > 2
+        os.set_inheritable(fd, True)
+        try:
+            result = sandboxed_exec(
+                base_caps,
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import errno, os\n"
+                        f"fd = {fd}\n"
+                        "try:\n"
+                        "    os.read(fd, 1)\n"
+                        "except OSError as e:\n"
+                        "    if e.errno == errno.EBADF:\n"
+                        "        print('FD_CLOSED')\n"
+                        "    else:\n"
+                        "        print(f'FD_ERROR:{e.errno}')\n"
+                        "else:\n"
+                        "    print('FD_LEAKED')\n"
+                    ),
+                ],
+                cwd=str(temp_dir),
+            )
+        finally:
+            os.close(fd)
+
+        assert result.exit_code == 0
+        assert b"FD_CLOSED" in result.stdout
+        assert b"FD_LEAKED" not in result.stdout
+
     def test_write_file_in_sandbox(self, base_caps, temp_dir):
         """Can write files to allowed paths."""
         result = sandboxed_exec(
             base_caps,
-            ["bash", "-c", "echo 'sandboxed' > test.txt && cat test.txt"],
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from pathlib import Path\n"
+                    "Path('test.txt').write_text('sandboxed\\n')\n"
+                    "print(Path('test.txt').read_text(), end='')\n"
+                ),
+            ],
             cwd=str(temp_dir),
         )
         assert result.exit_code == 0
