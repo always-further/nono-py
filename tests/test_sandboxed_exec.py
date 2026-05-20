@@ -95,9 +95,7 @@ class TestSandboxedExec:
         assert result.exit_code == 0
         assert result.stdout.strip() == b"test_value"
 
-    def test_parent_environment_is_not_inherited_by_default(
-        self, base_caps, temp_dir, monkeypatch
-    ):
+    def test_parent_environment_is_not_inherited_by_default(self, base_caps, temp_dir, monkeypatch):
         """Parent environment variables should not leak into the child."""
         monkeypatch.setenv("NONO_TEST_PARENT_SECRET", "secret-value")
 
@@ -106,10 +104,7 @@ class TestSandboxedExec:
             [
                 sys.executable,
                 "-c",
-                (
-                    "import os\n"
-                    "print(os.environ.get('NONO_TEST_PARENT_SECRET', 'MISSING'))\n"
-                ),
+                ("import os\nprint(os.environ.get('NONO_TEST_PARENT_SECRET', 'MISSING'))\n"),
             ],
             cwd=str(temp_dir),
         )
@@ -117,9 +112,7 @@ class TestSandboxedExec:
         assert result.exit_code == 0
         assert result.stdout.strip() == b"MISSING"
 
-    def test_parent_environment_inheritance_is_explicit(
-        self, base_caps, temp_dir, monkeypatch
-    ):
+    def test_parent_environment_inheritance_is_explicit(self, base_caps, temp_dir, monkeypatch):
         """Parent env inheritance requires inherit_env=True."""
         clear_dangerous_loader_env(monkeypatch)
         monkeypatch.setenv("NONO_TEST_PARENT_VALUE", "inherited-value")
@@ -148,10 +141,9 @@ class TestSandboxedExec:
                 env=[("LD_PRELOAD", "blocked-loader.so")],
             )
 
-    def test_inherited_loader_env_vars_are_rejected(
-        self, base_caps, temp_dir, monkeypatch
-    ):
+    def test_inherited_loader_env_vars_are_rejected(self, base_caps, temp_dir, monkeypatch):
         """inherit_env=True fails closed on dangerous parent loader state."""
+        clear_dangerous_loader_env(monkeypatch)
         monkeypatch.setenv("DYLD_INSERT_LIBRARIES", "blocked-inject.dylib")
 
         with pytest.raises(ValueError, match="DYLD_INSERT_LIBRARIES"):

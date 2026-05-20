@@ -550,9 +550,7 @@ class ProxyHandle:
         """Environment variables for reverse proxy credential routes."""
         ...
 
-    def sandbox_env(
-        self, extra_env: list[tuple[str, str]] | None = None
-    ) -> list[tuple[str, str]]:
+    def sandbox_env(self, extra_env: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
         """All env vars for a sandboxed child, plus optional per-child vars."""
         ...
 
