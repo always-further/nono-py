@@ -57,7 +57,7 @@ class TestPolicyLoading:
                     "groups": {
                         "g": {
                             "description": "bad allow",
-                            "allow": {"filesystem": ["/tmp"]},
+                            "allow": {"filesystem": ["/policy-lint-placeholder"]},
                         }
                     }
                 },
@@ -68,7 +68,7 @@ class TestPolicyLoading:
                     "groups": {
                         "g": {
                             "description": "bad deny",
-                            "deny": {"filesystem": ["/tmp"]},
+                            "deny": {"filesystem": ["/policy-lint-placeholder"]},
                         }
                     }
                 },
@@ -106,9 +106,7 @@ class TestPolicyLoading:
             ),
         ],
     )
-    def test_load_policy_rejects_unknown_security_fields(
-        self, payload: dict, field: str
-    ) -> None:
+    def test_load_policy_rejects_unknown_security_fields(self, payload: dict, field: str) -> None:
         """Unknown policy fields should fail closed instead of being ignored."""
         with pytest.raises(ValueError, match=field):
             load_policy(json.dumps(payload))
