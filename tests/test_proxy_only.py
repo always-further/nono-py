@@ -104,11 +104,7 @@ class TestProxyOnlyCapabilitySet:
         )
         try:
             with socket.create_connection(("127.0.0.1", proxy.port), timeout=3) as s:
-                s.sendall(
-                    b"CONNECT google.com:443 HTTP/1.1\r\n"
-                    b"Host: google.com:443\r\n"
-                    b"\r\n"
-                )
+                s.sendall(b"CONNECT google.com:443 HTTP/1.1\r\nHost: google.com:443\r\n\r\n")
                 response = s.recv(4096)
         finally:
             proxy.shutdown()
