@@ -54,6 +54,7 @@ config = ProxyConfig(
     bind_addr="127.0.0.1",
     bind_port=0,
     max_connections=256,
+    allow_all_hosts=False,
 )
 ```
 
@@ -61,12 +62,13 @@ config = ProxyConfig(
 |---|---|---|---|
 | `bind_addr` | `str` | `"127.0.0.1"` | Parsed to `IpAddr` |
 | `bind_port` | `int` | `0` | 0 = OS-assigned ephemeral |
-| `allowed_hosts` | `list[str]` | `[]` | Empty = allow all (except hardcoded deny) |
+| `allowed_hosts` | `list[str] \| None` | `None` | Transparent CONNECT allowlist. `None` or `[]` denies transparent CONNECT except configured route upstreams needed by reverse proxy forwarding |
 | `routes` | `list[RouteConfig]` | `[]` | Reverse proxy credential routes |
 | `external_proxy` | `ExternalProxyConfig \| None` | `None` | Enterprise proxy passthrough |
 | `max_connections` | `int` | `256` | 0 = unlimited |
 | `intercept_ca_dir` | `str \| None` | `None` | Directory for TLS interception CA certificates |
 | `intercept_parent_ca_pems` | `bytes \| None` | `None` | Parent CA PEM bytes for TLS interception |
+| `allow_all_hosts` | `bool` | `False` | Explicit opt-in to allow transparent CONNECT to all hosts except the hardcoded metadata deny list |
 
 #### RouteConfig
 
@@ -133,6 +135,7 @@ proxy = start_proxy(config)
 proxy.port                    # int — assigned listening port
 proxy.env_vars()              # dict[str, str] — HTTP_PROXY, HTTPS_PROXY, etc.
 proxy.credential_env_vars()   # dict[str, str] — base URL overrides + phantom tokens
+proxy.sandbox_env()           # list[tuple[str, str]] — all proxy env for sandboxed_exec
 proxy.drain_audit_events()    # list[dict] — network audit events
 proxy.shutdown()              # signal graceful shutdown
 ```
@@ -209,8 +212,9 @@ env vars slot in directly:
 
 ```python
 proxy = start_proxy(config)
-all_env = list(proxy.env_vars().items()) + list(proxy.credential_env_vars().items())
-result = sandboxed_exec(caps, ["python", "agent.py"], env=all_env)
+caps.proxy_only(proxy)
+env = proxy.sandbox_env()
+result = sandboxed_exec(caps, ["python", "agent.py"], env=env)
 ```
 
 No changes to `sandboxed_exec` are required.
@@ -406,11 +410,11 @@ mgr.create_baseline()
 # 3. Build sandbox capabilities
 caps = CapabilitySet()
 caps.allow_path("/workspace", AccessMode.READ_WRITE)
-caps.block_network()  # direct network blocked; proxy provides filtered access
+caps.proxy_only(proxy)  # direct network blocked except localhost proxy traffic
 
 # 4. Run sandboxed agent with proxy env vars
-env = list(proxy.env_vars().items()) + list(proxy.credential_env_vars().items())
-result = sandboxed_exec(caps, ["python", "agent.py"], env=env)
+env = proxy.sandbox_env()
+result = sandboxed_exec(caps, ["python", "agent.py"], cwd="/workspace", env=env)
 
 # 5. Capture incremental snapshot after agent finishes
 changes = mgr.create_incremental()

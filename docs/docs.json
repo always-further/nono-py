@@ -36,6 +36,8 @@
           "python/api/access-mode",
           "python/api/proxy-config",
           "python/api/snapshot-manager",
+          "python/api/policy",
+          "python/api/audit",
           "python/api/query-context",
           "python/api/sandbox-state",
           "python/api/fs-capability",

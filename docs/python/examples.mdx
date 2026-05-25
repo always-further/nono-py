@@ -61,12 +61,12 @@ process_data("/data/input", "/data/output")
 
 ## AI Agent Sandbox
 
-Sandbox an AI agent that generates and executes code:
+Run generated code in a sandboxed child while the supervisor stays unsandboxed:
 
 ```python
-from nono_py import CapabilitySet, AccessMode, apply, is_supported
-import subprocess
+from nono_py import CapabilitySet, AccessMode, is_supported, sandboxed_exec
 import tempfile
+import os
 
 def run_agent_code(code: str, work_dir: str):
     """Execute AI-generated code in a sandbox."""
@@ -81,21 +81,18 @@ def run_agent_code(code: str, work_dir: str):
     caps.allow_path("/lib", AccessMode.READ)          # Libraries
     caps.block_network()                               # No network access
 
-    apply(caps)
-
     # Write and execute the code
     script_path = os.path.join(work_dir, "agent_script.py")
     with open(script_path, "w") as f:
         f.write(code)
 
-    result = subprocess.run(
+    result = sandboxed_exec(
+        caps,
         ["python", script_path],
-        capture_output=True,
-        text=True,
         cwd=work_dir
     )
 
-    return result.stdout, result.stderr
+    return result.stdout.decode(), result.stderr.decode()
 
 # AI generates some code
 agent_code = """
@@ -348,10 +345,10 @@ mgr.create_baseline()
 # 3. Run sandboxed agent with proxy env vars
 caps = CapabilitySet()
 caps.allow_path("/workspace", AccessMode.READ_WRITE)
-caps.block_network()  # Direct network blocked; proxy provides filtered access
+caps.proxy_only(proxy)  # Direct network blocked except localhost proxy traffic
 
 env = proxy.sandbox_env()
-result = sandboxed_exec(caps, ["python", "agent.py"], env=env)
+result = sandboxed_exec(caps, ["python", "agent.py"], cwd="/workspace", env=env)
 
 # 4. Capture changes and audit trail
 manifest, changes = mgr.create_incremental()

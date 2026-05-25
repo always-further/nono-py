@@ -1,0 +1,108 @@
+---
+title: Policy
+description: Load and resolve policy.json documents
+---
+
+`Policy` represents a parsed policy document. Use it to inspect named groups, resolve filesystem capabilities, derive deny paths, and build proxy configuration from network policy.
+
+## Loading
+
+```python
+from nono_py import embedded_policy_json, load_embedded_policy, load_policy
+
+policy = load_embedded_policy()
+raw = embedded_policy_json()
+custom = load_policy(raw)
+```
+
+`load_policy(json)` parses strictly. Unknown top-level, group, `allow`, `deny`, `network`, or route fields raise `ValueError` so security-sensitive typos fail closed.
+
+## Policy
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `group_names()` | `list[str]` | Sorted group names in the document |
+| `group_description(name)` | `str \| None` | Description for a group, if present |
+| `resolve_groups(group_names, caps)` | `ResolvedPolicy` | Add matching group capabilities to `caps` |
+| `resolve_deny_paths(group_names)` | `list[str]` | Expanded `deny.access` paths for the groups |
+| `resolve_proxy_config(group_names)` | `ProxyConfig \| None` | Proxy configuration from network allowlist/routes |
+| `validate_group_exclusions(excluded_groups)` | `None` | Reject exclusions that target required groups |
+
+### Example
+
+```python
+from nono_py import CapabilitySet, load_policy, start_proxy
+
+policy = load_policy(
+    """
+    {
+      "groups": {
+        "workspace": {
+          "description": "Read and write the workspace",
+          "allow": { "read_write": ["/workspace"] }
+        },
+        "proxy_web": {
+          "description": "Allow only example.com through the proxy",
+          "network": { "allow_domain": ["example.com"] }
+        }
+      }
+    }
+    """
+)
+
+caps = CapabilitySet()
+resolved = policy.resolve_groups(["workspace", "proxy_web"], caps)
+
+proxy_config = policy.resolve_proxy_config(["proxy_web"])
+if proxy_config is not None:
+    proxy = start_proxy(proxy_config)
+    caps.proxy_only(proxy)
+```
+
+## ResolvedPolicy
+
+Returned by `Policy.resolve_groups()`.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `names` | `list[str]` | Groups that resolved after platform filtering |
+| `needs_unlink_overrides` | `bool` | Whether to apply post-resolution unlink overrides |
+| `deny_paths` | `list[str]` | Expanded deny paths gathered during resolution |
+
+## Network Policy
+
+Proxy-filtered network groups fail closed: `resolve_groups()` blocks direct network access when a group requires proxy filtering. After starting the proxy, call `caps.proxy_only(proxy)` and pass `proxy.sandbox_env()` to `sandboxed_exec()`.
+
+Canonical network allowlist key:
+
+```json
+{ "network": { "allow_domain": ["example.com", "*.example.org"] } }
+```
+
+Accepted aliases for compatibility:
+
+- `network.allow_proxy`
+- `network.proxy_allow`
+
+If multiple resolved groups specify conflicting `upstream_proxy` or `external_proxy` settings, resolution raises `ValueError`.
+
+## Deny Validation
+
+```python
+from nono_py import CapabilitySet, load_policy, validate_deny_overlaps
+
+policy = load_policy(policy_json)
+caps = CapabilitySet()
+policy.resolve_groups(["default"], caps)
+
+deny_paths = policy.resolve_deny_paths(["default"])
+validate_deny_overlaps(deny_paths, caps)
+```
+
+Use this after final capability resolution to catch deny paths that remain covered by an allow grant.
+
+## Related
+
+- [CapabilitySet](/python/api/capability-set) - Target for resolved filesystem capabilities
+- [ProxyConfig](/python/api/proxy-config) - Returned by proxy network policy
+- [Module Functions](/python/api/functions) - Policy loading and deny validation helpers

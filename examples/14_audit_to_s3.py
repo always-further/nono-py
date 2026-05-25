@@ -521,9 +521,7 @@ def main() -> None:
         print("3. Running sandboxed child through the proxy")
         with tempfile.TemporaryDirectory() as workdir:
             caps = build_proxy_child_caps(workdir)
-            env = list(proxy.env_vars().items()) + list(
-                proxy.credential_env_vars().items()
-            )
+            env = proxy.sandbox_env()
             result = sandboxed_exec(
                 caps,
                 [sys.executable, "-c", PROXY_DEMO_CHILD_CODE],

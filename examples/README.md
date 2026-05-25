@@ -70,6 +70,16 @@ platform support issues.
 python examples/07_error_handling.py
 ```
 
+### 08_sandboxed_exec.py
+
+Run commands in sandboxed child processes while the parent remains
+unsandboxed. Demonstrates isolated command execution, explicit env vars,
+timeouts, and repeated child runs.
+
+```bash
+python examples/08_sandboxed_exec.py
+```
+
 ### 09_policy_loading.py
 
 Load a `policy.json` document, resolve named groups into a `CapabilitySet`,
@@ -92,6 +102,15 @@ granted directory.
 python examples/10_policy_enforced.py
 ```
 
+### 11_proxy_basics.py
+
+Start the nono proxy, pass `proxy.sandbox_env()` to a sandboxed child, and
+inspect allow/deny audit events from domain-filtered outbound requests.
+
+```bash
+python examples/11_proxy_basics.py
+```
+
 ### 12_policy_proxy.py
 
 Resolve a proxy allowlist from `policy_example.json`, start the proxy from
@@ -100,6 +119,25 @@ blocked HTTPS domain.
 
 ```bash
 python examples/12_policy_proxy.py
+```
+
+### 12_snapshot_rollback.py
+
+Create baseline and incremental filesystem snapshots, preview restore
+changes, and roll a workspace back to its baseline state.
+
+```bash
+python examples/12_snapshot_rollback.py
+```
+
+### 13_proxy_with_sandbox.py
+
+Full supervisor flow: start a proxy, take a baseline snapshot, run a
+sandboxed child through proxy-only network access, collect audit events,
+save session metadata, and roll back changes.
+
+```bash
+python examples/13_proxy_with_sandbox.py
 ```
 
 ### 14_audit_to_s3.py

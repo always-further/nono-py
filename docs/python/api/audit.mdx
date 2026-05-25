@@ -1,0 +1,101 @@
+---
+title: Audit
+description: Read, tail, verify, and synthesize audit logs
+---
+
+The `nono_py.audit` module reads and verifies supervisor audit logs. Each session directory contains `audit-events.ndjson`; each line is an alpha-scheme record with sequence, previous chain hash, leaf hash, rolling chain hash, canonical event JSON, and the typed event payload.
+
+## Reading
+
+```python
+from nono_py.audit import iter_session, tail_session
+
+for record in iter_session("/path/to/session"):
+    print(record["sequence"], record["event"]["type"])
+```
+
+| Function | Description |
+|----------|-------------|
+| `iter_session(session_dir)` | Yield current records from `audit-events.ndjson`, then stop |
+| `tail_session(session_dir, poll_interval_s, stop_event=None)` | Yield existing records, then follow appends with rotation handling |
+
+`session_dir` is the directory containing `audit-events.ndjson`, not the file path itself.
+
+## Verification
+
+```python
+from nono_py.audit import VerificationError, verify_log
+
+try:
+    result = verify_log("/path/to/session")
+except VerificationError as exc:
+    raise RuntimeError(f"audit log failed verification: {exc}") from exc
+
+assert result["records_verified"]
+```
+
+`verify_log()` recomputes sequence order, previous-chain links, leaf hashes, chain hashes, and the final Merkle root. If `session.json` contains an `audit_integrity` summary, the computed event count, chain head, and Merkle root are checked against it automatically.
+
+## Event Builders
+
+Builder functions return correctly shaped event payloads:
+
+```python
+from nono_py.audit import (
+    approval_granted,
+    capability_decision,
+    network,
+    session_ended,
+    session_started,
+    url_open,
+)
+
+started = session_started(started="2026-01-01T00:00:00Z", command=["agent"])
+ended = session_ended(ended="2026-01-01T00:05:00Z", exit_code=0)
+decision = capability_decision(
+    timestamp="2026-01-01T00:00:01Z",
+    path="/workspace/output.txt",
+    access="Write",
+    child_pid=1234,
+    session_id="session-001",
+    decision=approval_granted(),
+    backend="seatbelt",
+    duration_ms=3,
+)
+opened = url_open(url="https://example.com", child_pid=1234, session_id="session-001", success=True)
+net = network(timestamp_unix_ms=1767225600000, mode="reverse", decision="allow", target="example.com")
+```
+
+Other approval helpers are `approval_denied(reason)` and `approval_timeout()`.
+
+## AlphaRecorder
+
+Use `AlphaRecorder` when synthesizing or replaying logs. It wraps events in fully hashed records and advances sequence and chain state.
+
+```python
+from pathlib import Path
+from nono_py.audit import AlphaRecorder, session_ended, session_started, verify_log
+
+recorder = AlphaRecorder()
+session_dir = Path("/tmp/session")
+session_dir.mkdir(exist_ok=True)
+
+with (session_dir / "audit-events.ndjson").open("w", encoding="utf-8") as fh:
+    recorder.write(fh, session_started(started="2026-01-01T00:00:00Z", command=["agent"]))
+    recorder.write(fh, session_ended(ended="2026-01-01T00:05:00Z", exit_code=0))
+
+result = verify_log(session_dir)
+assert result["event_count"] == 2
+```
+
+| Property or method | Description |
+|--------------------|-------------|
+| `sequence` | Sequence number assigned to the next record |
+| `chain_head` | Hex chain head after the last record, or `None` |
+| `record(event)` | Return one hashed record without writing it |
+| `write(fh, event)` | Append a JSONL record and flush the file handle |
+
+## Related
+
+- [SnapshotManager](/python/api/snapshot-manager) - Persists session metadata and audit summaries
+- [ProxyConfig](/python/api/proxy-config) - Produces network audit events

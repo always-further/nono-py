@@ -109,7 +109,7 @@ the proxy transparently swaps in the real API key (loaded from the OS keyring)
 before forwarding upstream. The sandboxed process never sees the real secret.
 
 ```python
-from nono_py import ProxyConfig, RouteConfig, start_proxy
+from nono_py import AccessMode, CapabilitySet, ProxyConfig, RouteConfig, sandboxed_exec, start_proxy
 
 config = ProxyConfig(
     allowed_hosts=["api.openai.com", "*.anthropic.com"],
@@ -120,8 +120,11 @@ config = ProxyConfig(
 proxy = start_proxy(config)
 
 # Inject only the current proxy/session env vars into the sandboxed child
+caps = CapabilitySet()
+caps.allow_path("/workspace", AccessMode.READ_WRITE)
+caps.proxy_only(proxy)
 env = proxy.sandbox_env(extra_env=[("NONO_SESSION_ID", "session-001")])
-result = sandboxed_exec(caps, ["python", "agent.py"], env=env)
+result = sandboxed_exec(caps, ["python", "agent.py"], cwd="/workspace", env=env)
 
 # Audit trail
 events = proxy.drain_audit_events()
@@ -157,15 +160,19 @@ mgr.restore_to(snapshot_number=0)
 Append-only, Merkle-chained audit logging with tamper detection:
 
 ```python
-from nono_py.audit import AlphaRecorder, verify_log, iter_session, session_started, session_ended
+from pathlib import Path
+from nono_py.audit import AlphaRecorder, iter_session, session_ended, session_started, verify_log
 
 recorder = AlphaRecorder()
-with open("audit-events.ndjson", "w") as f:
+session_dir = Path("/tmp/nono-audit-session")
+session_dir.mkdir(exist_ok=True)
+
+with (session_dir / "audit-events.ndjson").open("w", encoding="utf-8") as f:
     recorder.write(f, session_started(started="2026-01-01T00:00:00Z", command=["agent"]))
     recorder.write(f, session_ended(ended="2026-01-01T00:05:00Z", exit_code=0))
 
-# Verify integrity — detects any tampering
-result = verify_log("/path/to/session")
+# Verify integrity - detects any tampering
+result = verify_log(session_dir)
 assert result["records_verified"]
 ```
 
