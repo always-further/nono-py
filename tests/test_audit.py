@@ -10,6 +10,7 @@ import pytest  # ty:ignore[unresolved-import]  # noqa: F401
 from pydantic import ValidationError
 
 from nono_py.audit import (
+    AlphaRecorder,
     approval_denied,
     approval_granted,
     approval_timeout,
@@ -199,6 +200,29 @@ class TestEventBuilders:
                 backend="b",
                 duration_ms=0,
             )
+
+    def test_recorder_accepts_manual_capability_request_without_reason(self) -> None:
+        event = {
+            "type": "capability_decision",
+            "entry": {
+                "timestamp": "t",
+                "request": {
+                    "request_id": "r",
+                    "path": "/tmp",  # noqa: S108
+                    "access": "Read",
+                    "child_pid": 1,
+                    "session_id": "s",
+                },
+                "decision": "Granted",
+                "backend": "b",
+                "duration_ms": 0,
+            },
+        }
+
+        record = AlphaRecorder().record(event)
+
+        request = record["event"]["entry"]["request"]
+        assert request["reason"] is None
 
 
 class TestApprovalHelpers:

@@ -431,7 +431,7 @@ class CapabilityRequestPayload(_AuditModel):
     request_id: str
     path: str
     access: Literal["Read", "Write", "ReadWrite"]
-    reason: str | None
+    reason: str | None = None
     child_pid: int
     session_id: str
 
@@ -445,8 +445,8 @@ class _ApprovalDeniedPayload(_AuditModel):
 
 
 # ApprovalDecision is a serde-tagged enum: "Granted" | {"Denied": ...} | "Timeout".
-ApprovalDecision = Literal["Granted", "Timeout"] | _ApprovalDeniedPayload
-ApprovalDecisionInput = ApprovalDecision | dict[str, Any]
+ApprovalDecision = Literal["Granted", "Timeout"] | dict[str, Any]
+_ApprovalDecisionModelInput = Literal["Granted", "Timeout"] | _ApprovalDeniedPayload
 
 
 class AuditEntryPayload(_AuditModel):
@@ -454,7 +454,7 @@ class AuditEntryPayload(_AuditModel):
 
     timestamp: str
     request: CapabilityRequestPayload
-    decision: ApprovalDecision
+    decision: _ApprovalDecisionModelInput
     backend: str
     duration_ms: int
 
@@ -475,11 +475,11 @@ class NetworkAuditEventPayload(_AuditModel):
     mode: Literal["connect", "reverse", "external"]
     decision: Literal["allow", "deny"]
     target: str
-    port: int | None
-    method: str | None
-    path: str | None
-    status: int | None
-    reason: str | None
+    port: int | None = None
+    method: str | None = None
+    path: str | None = None
+    status: int | None = None
+    reason: str | None = None
 
 
 class SessionStartedEvent(_AuditModel):
@@ -503,7 +503,7 @@ class UrlOpenEvent(_AuditModel):
     type: Literal["url_open"]
     request: UrlOpenRequestPayload
     success: bool
-    error: str | None
+    error: str | None = None
 
 
 class NetworkEvent(_AuditModel):
@@ -521,22 +521,24 @@ class AuditEventRecord(_AuditModel):
     """One line of ``audit-events.ndjson``."""
 
     sequence: int
-    prev_chain: HexDigest | None
+    prev_chain: HexDigest | None = None
     leaf_hash: HexDigest
     chain_hash: HexDigest
-    event_json: str | None
+    event_json: str | None = None
     event: AuditEvent
 
 
 _AUDIT_EVENT_ADAPTER: TypeAdapter[AuditEvent] = TypeAdapter(AuditEvent)
-_APPROVAL_DECISION_ADAPTER: TypeAdapter[ApprovalDecision] = TypeAdapter(ApprovalDecision)
+_APPROVAL_DECISION_ADAPTER: TypeAdapter[_ApprovalDecisionModelInput] = TypeAdapter(
+    _ApprovalDecisionModelInput
+)
 
 
 def _validate_event(event: AuditEvent | dict[str, Any]) -> AuditEvent:
     return _AUDIT_EVENT_ADAPTER.validate_python(event)
 
 
-def _validate_approval_decision(decision: ApprovalDecisionInput) -> ApprovalDecision:
+def _validate_approval_decision(decision: ApprovalDecision) -> _ApprovalDecisionModelInput:
     return _APPROVAL_DECISION_ADAPTER.validate_python(decision)
 
 
@@ -573,7 +575,7 @@ def capability_decision(
     access: Literal["Read", "Write", "ReadWrite"],
     child_pid: int,
     session_id: str,
-    decision: ApprovalDecisionInput,
+    decision: ApprovalDecision,
     backend: str,
     duration_ms: int,
     request_id: str | None = None,
@@ -749,7 +751,6 @@ __all__ = [
     "verify_log",
     # Event payload types
     "ApprovalDecision",
-    "ApprovalDecisionInput",
     "AuditEntryPayload",
     "AuditEvent",
     "AuditEventRecord",
