@@ -426,6 +426,13 @@ class TestLedger:
         with pytest.raises(VerificationError, match="not valid JSON"):
             verify_session_in_ledger(ledger, _sample_metadata())
 
+    def test_ledger_reports_physical_line_after_blank_lines(self, tmp_path) -> None:
+        ledger = tmp_path / "ledger.ndjson"
+        ledger.write_text("\n\n{not json\n")
+
+        with pytest.raises(VerificationError, match="line 3 is not valid JSON"):
+            verify_session_in_ledger(ledger, _sample_metadata())
+
     def test_ledger_rejects_record_missing_fields(self, tmp_path) -> None:
         record = build_ledger_record(_sample_metadata(), sequence=0, previous_chain=None)
         del record["session_id"]
@@ -440,6 +447,15 @@ class TestLedger:
         ledger.write_text("[1, 2, 3]\n")
 
         with pytest.raises(VerificationError, match="not a JSON object"):
+            verify_session_in_ledger(ledger, _sample_metadata())
+
+    def test_ledger_chain_errors_report_physical_line(self, tmp_path) -> None:
+        record = build_ledger_record(_sample_metadata(), sequence=0, previous_chain=None)
+        record["chain_hash"] = "aa" * 32
+        ledger = tmp_path / "ledger.ndjson"
+        ledger.write_text("\n" + json.dumps(record, separators=(",", ":")) + "\n")
+
+        with pytest.raises(VerificationError, match="chain hash mismatch at line 2"):
             verify_session_in_ledger(ledger, _sample_metadata())
 
     def test_session_digest_rejects_missing_protected_field(self) -> None:

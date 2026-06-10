@@ -644,31 +644,30 @@ _LEDGER_RECORD_KEYS = (
 )
 
 
-def _checked_ledger_records(path: Path) -> Iterator[LedgerRecordDict]:
+def _checked_ledger_records(path: Path) -> Iterator[tuple[int, LedgerRecordDict]]:
     """Like :func:`iter_ledger`, but malformed records raise VerificationError."""
-    records = iter_ledger(path)
-    line_number = 0
-    while True:
-        line_number += 1
-        try:
-            record = next(records)
-        except StopIteration:
-            return
-        except json.JSONDecodeError as e:
-            raise VerificationError(
-                f"audit ledger record at line {line_number} is not valid JSON"
-            ) from e
-        if not isinstance(record, dict):
-            raise VerificationError(
-                f"audit ledger record at line {line_number} is not a JSON object"
-            )
-        missing = [key for key in _LEDGER_RECORD_KEYS if key not in record]
-        if missing:
-            raise VerificationError(
-                f"audit ledger record at line {line_number} is missing fields: "
-                + ", ".join(missing)
-            )
-        yield record
+    with path.open("r", encoding="utf-8") as fh:
+        for line_number, line in enumerate(fh, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise VerificationError(
+                    f"audit ledger record at line {line_number} is not valid JSON"
+                ) from e
+            if not isinstance(record, dict):
+                raise VerificationError(
+                    f"audit ledger record at line {line_number} is not a JSON object"
+                )
+            missing = [key for key in _LEDGER_RECORD_KEYS if key not in record]
+            if missing:
+                raise VerificationError(
+                    f"audit ledger record at line {line_number} is missing fields: "
+                    + ", ".join(missing)
+                )
+            yield line_number, cast(LedgerRecordDict, record)
 
 
 def verify_session_in_ledger(
@@ -701,7 +700,7 @@ def verify_session_in_ledger(
     session_found = False
     session_digest_matches = False
 
-    for line_number, record in enumerate(_checked_ledger_records(path), start=1):
+    for line_number, record in _checked_ledger_records(path):
         if record.get("sequence") != entry_count:
             raise VerificationError(f"audit ledger sequence mismatch at line {line_number}")
         if record.get("prev_chain") != previous_chain:
