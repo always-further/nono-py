@@ -501,6 +501,9 @@ class TestAuditAttestation:
         )
         assert dsse_pae(IN_TOTO_PAYLOAD_TYPE, b"{}").startswith(b"DSSEv1 28 ")
 
+    def test_dsse_pae_counts_payload_type_utf8_bytes(self) -> None:
+        assert dsse_pae("nono://é", b"x") == b"DSSEv1 9 nono://\xc3\xa9 1 x"
+
     def test_sign_and_verify_audit_attestation_bundle(self) -> None:
         metadata = _attested_metadata()
         bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
@@ -531,6 +534,42 @@ class TestAuditAttestation:
         assert result["expected_public_key_matches"] is True
         assert result["signature_verified"] is True
 
+    def test_verify_accepts_expected_public_key_pin_as_whitespace_pem_bytes(self) -> None:
+        from cryptography.hazmat.primitives import serialization
+
+        metadata = _attested_metadata()
+        bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
+        metadata["audit_attestation"] = summary
+        private_key = serialization.load_pem_private_key(_TEST_SIGNING_KEY_PEM, password=None)
+        public_key_pem = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+
+        result = verify_audit_attestation_bundle(
+            bundle_json,
+            metadata,
+            expected_public_key=b" \n\t" + public_key_pem,
+        )
+
+        assert result["expected_public_key_matches"] is True
+        assert result["signature_verified"] is True
+
+    def test_verify_accepts_forward_compatible_sigstore_bundle_fields(self) -> None:
+        metadata = _attested_metadata()
+        bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
+        metadata["audit_attestation"] = summary
+        bundle = json.loads(bundle_json)
+        bundle["extraTopLevel"] = {"future": True}
+        bundle["verificationMaterial"]["publicKey"].pop("hint")
+        bundle["verificationMaterial"]["publicKey"]["futureField"] = "ignored"
+        bundle["dsseEnvelope"]["signatures"][0]["futureField"] = "ignored"
+
+        result = verify_audit_attestation_bundle(bundle, metadata)
+
+        assert result["signature_verified"] is True
+        assert result["key_id_matches"] is True
+
     def test_verify_rejects_wrong_expected_public_key(self) -> None:
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -538,9 +577,13 @@ class TestAuditAttestation:
         metadata = _attested_metadata()
         bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
         metadata["audit_attestation"] = summary
-        wrong_public_key = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        wrong_public_key = (
+            ec.generate_private_key(ec.SECP256R1())
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
         )
 
         result = verify_audit_attestation_bundle(
@@ -645,6 +688,18 @@ class TestAuditAttestation:
 
         assert result["signature_verified"] is False
         assert "chain_head" in str(result["verification_error"])
+
+    def test_verify_normalizes_signed_chain_head_before_comparison(self) -> None:
+        metadata = _attested_metadata()
+        metadata["audit_integrity"] = dict(metadata["audit_integrity"])
+        metadata["audit_integrity"]["chain_head"] = bytes.fromhex("11" * 32)
+        bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
+        metadata["audit_attestation"] = summary
+
+        result = verify_audit_attestation_bundle(bundle_json, metadata)
+
+        assert result["signature_verified"] is True
+        assert result["verification_error"] is None
 
     def test_write_and_verify_audit_attestation_from_session_dir(self, tmp_path: Path) -> None:
         metadata = _attested_metadata()

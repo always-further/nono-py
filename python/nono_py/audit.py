@@ -318,8 +318,8 @@ class AuditAttestationVerificationResultDict(TypedDict):
     verification_error: str | None
 
 
-class _AttestationModel(BaseModel):  # type: ignore[misc]
-    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+class _AttestationModel(BaseModel):  # type: ignore[misc, unused-ignore]
+    model_config = ConfigDict(extra="ignore", strict=True, populate_by_name=True)
 
 
 class _DsseSignatureModel(_AttestationModel):
@@ -334,7 +334,7 @@ class _DsseEnvelopeModel(_AttestationModel):
 
 
 class _PublicKeyMaterialModel(_AttestationModel):
-    hint: str
+    hint: str | None = None
 
 
 class _VerificationMaterialModel(_AttestationModel):
@@ -511,7 +511,10 @@ def _b64_decode_flexible(value: str) -> bytes:
 
 
 def _pae(payload_type: str, payload: bytes) -> bytes:
-    header = f"DSSEv1 {len(payload_type)} {payload_type} {len(payload)} ".encode("ascii")
+    payload_type_bytes = payload_type.encode("utf-8")
+    header = b"DSSEv1 %d " % len(payload_type_bytes)
+    header += payload_type_bytes
+    header += b" %d " % len(payload)
     return header + payload
 
 
@@ -525,8 +528,9 @@ def _load_public_key_der(value: bytes | str) -> bytes:
     from cryptography.hazmat.primitives.asymmetric import ec
 
     if isinstance(value, bytes):
-        if value.startswith(b"-----BEGIN PUBLIC KEY-----"):
-            public_key = serialization.load_pem_public_key(value)
+        stripped = value.lstrip()
+        if stripped.startswith(b"-----BEGIN PUBLIC KEY-----"):
+            public_key = serialization.load_pem_public_key(stripped)
             der = public_key.public_bytes(
                 encoding=serialization.Encoding.DER,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -551,7 +555,9 @@ def _load_p256_private_key(private_key_pem: bytes | str, password: bytes | None)
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ec
 
-    key_bytes = private_key_pem.encode("utf-8") if isinstance(private_key_pem, str) else private_key_pem
+    key_bytes = (
+        private_key_pem.encode("utf-8") if isinstance(private_key_pem, str) else private_key_pem
+    )
     if key_bytes.lstrip().startswith(b"-----BEGIN"):
         private_key = serialization.load_pem_private_key(key_bytes, password=password)
     else:
@@ -610,10 +616,13 @@ def _parse_attestation_bundle(bundle: Mapping[str, Any] | str | bytes) -> _Sigst
             bundle = json.loads(bundle)
         except json.JSONDecodeError as e:
             raise VerificationError(f"invalid audit attestation bundle JSON: {e}") from e
-    return cast(_SigstoreDsseBundleModel, _SigstoreDsseBundleModel.model_validate(bundle))
+    validated: _SigstoreDsseBundleModel = _SigstoreDsseBundleModel.model_validate(bundle)
+    return validated
 
 
-def _audit_attestation_summary(metadata: Mapping[str, Any] | Any) -> AuditAttestationSummaryDict | None:
+def _audit_attestation_summary(
+    metadata: Mapping[str, Any] | Any,
+) -> AuditAttestationSummaryDict | None:
     summary = _metadata_to_dict(metadata).get("audit_attestation")
     if summary is None:
         return None
@@ -848,7 +857,9 @@ def verify_audit_attestation_bundle(
                 f"expected {summary['key_id']}, got {signer_key_id}",
             )
         if expected_public_key is not None:
-            expected_public_key_matches = _load_public_key_der(expected_public_key) == public_key_der
+            expected_public_key_matches = (
+                _load_public_key_der(expected_public_key) == public_key_der
+            )
             if not expected_public_key_matches:
                 return _attestation_failure(
                     summary,
@@ -904,7 +915,8 @@ def verify_audit_attestation_bundle(
                 "audit attestation predicate missing audit_log",
             )
         for field in ("hash_algorithm", "event_count", "chain_head"):
-            if audit_log.get(field) != integrity[field]:
+            expected = _hash_hex(integrity[field]) if field == "chain_head" else integrity[field]
+            if audit_log.get(field) != expected:
                 return _attestation_failure(
                     summary,
                     expected_public_key_matches,
