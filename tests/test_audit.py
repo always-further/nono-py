@@ -532,6 +532,28 @@ class TestAuditAttestation:
         assert result["signature_verified"] is True
 
     def test_verify_rejects_wrong_expected_public_key(self) -> None:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        metadata = _attested_metadata()
+        bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
+        metadata["audit_attestation"] = summary
+        wrong_public_key = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+
+        result = verify_audit_attestation_bundle(
+            bundle_json,
+            metadata,
+            expected_public_key=wrong_public_key,
+        )
+
+        assert result["expected_public_key_matches"] is False
+        assert result["signature_verified"] is False
+        assert "provided public key" in str(result["verification_error"])
+
+    def test_verify_rejects_malformed_expected_public_key(self) -> None:
         metadata = _attested_metadata()
         bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
         metadata["audit_attestation"] = summary
@@ -542,9 +564,9 @@ class TestAuditAttestation:
             expected_public_key=b"wrong key",
         )
 
-        assert result["expected_public_key_matches"] is False
+        assert result["expected_public_key_matches"] is None
         assert result["signature_verified"] is False
-        assert "provided public key" in str(result["verification_error"])
+        assert result["verification_error"] is not None
 
     def test_sign_rejects_non_canonical_key_id(self) -> None:
         with pytest.raises(VerificationError, match="SPKI public key"):
@@ -564,6 +586,24 @@ class TestAuditAttestation:
         result = verify_audit_attestation_bundle(bundle, metadata)
 
         assert result["signature_verified"] is False
+        assert result["expected_public_key_matches"] is None
+        assert result["verification_error"] is not None
+
+    def test_verify_tampered_payload_does_not_report_pin_match(self) -> None:
+        metadata = _attested_metadata()
+        bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
+        metadata["audit_attestation"] = summary
+        bundle = json.loads(bundle_json)
+        bundle["dsseEnvelope"]["payload"] = "dGFtcGVyZWQ"
+
+        result = verify_audit_attestation_bundle(
+            bundle,
+            metadata,
+            expected_public_key=summary["public_key"],
+        )
+
+        assert result["signature_verified"] is False
+        assert result["expected_public_key_matches"] is None
         assert result["verification_error"] is not None
 
     def test_verify_detects_merkle_root_mismatch(self) -> None:
@@ -579,6 +619,32 @@ class TestAuditAttestation:
         assert result["signature_verified"] is False
         assert result["merkle_root_matches"] is False
         assert "Merkle root" in str(result["verification_error"])
+
+    def test_verify_detects_signed_event_count_mismatch(self) -> None:
+        metadata = _attested_metadata()
+        bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
+        metadata["audit_attestation"] = summary
+        changed = dict(metadata)
+        changed["audit_integrity"] = dict(metadata["audit_integrity"])
+        changed["audit_integrity"]["event_count"] = 3
+
+        result = verify_audit_attestation_bundle(bundle_json, changed)
+
+        assert result["signature_verified"] is False
+        assert "event_count" in str(result["verification_error"])
+
+    def test_verify_detects_signed_chain_head_mismatch(self) -> None:
+        metadata = _attested_metadata()
+        bundle_json, summary = sign_audit_attestation_bundle(metadata, _TEST_SIGNING_KEY_PEM)
+        metadata["audit_attestation"] = summary
+        changed = dict(metadata)
+        changed["audit_integrity"] = dict(metadata["audit_integrity"])
+        changed["audit_integrity"]["chain_head"] = "33" * 32
+
+        result = verify_audit_attestation_bundle(bundle_json, changed)
+
+        assert result["signature_verified"] is False
+        assert "chain_head" in str(result["verification_error"])
 
     def test_write_and_verify_audit_attestation_from_session_dir(self, tmp_path: Path) -> None:
         metadata = _attested_metadata()

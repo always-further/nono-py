@@ -521,21 +521,30 @@ def dsse_pae(payload_type: str, payload: bytes) -> bytes:
 
 
 def _load_public_key_der(value: bytes | str) -> bytes:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
     if isinstance(value, bytes):
         if value.startswith(b"-----BEGIN PUBLIC KEY-----"):
-            from cryptography.hazmat.primitives import serialization
-
             public_key = serialization.load_pem_public_key(value)
-            return public_key.public_bytes(
+            der = public_key.public_bytes(
                 encoding=serialization.Encoding.DER,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
             )
-        return value
+        else:
+            der = value
+
+        public_key = serialization.load_der_public_key(der)
+        if not isinstance(public_key, ec.EllipticCurvePublicKey):
+            raise VerificationError("expected public key must be an ECDSA P-256 public key")
+        if not isinstance(public_key.curve, ec.SECP256R1):
+            raise VerificationError("expected public key must use the P-256 curve")
+        return der
 
     text = value.strip()
     if text.startswith("-----BEGIN PUBLIC KEY-----"):
         return _load_public_key_der(text.encode("utf-8"))
-    return _b64_decode_flexible(text)
+    return _load_public_key_der(_b64_decode_flexible(text))
 
 
 def _load_p256_private_key(private_key_pem: bytes | str, password: bytes | None) -> Any:
@@ -760,8 +769,15 @@ def verify_audit_attestation_bundle(
     *,
     expected_public_key: bytes | str | None = None,
 ) -> AuditAttestationVerificationResultDict:
-    """Verify a keyed alpha audit-attestation DSSE bundle."""
-    expected_public_key_matches = expected_public_key is not None
+    """Verify a keyed alpha audit-attestation DSSE bundle.
+
+    Supplying ``expected_public_key`` is what gives the result an external
+    trust anchor. Without it, verification proves the bundle, metadata
+    summary, and embedded public key are internally self-consistent, but an
+    attacker who can rewrite the session directory can replace all three.
+    """
+    expected_public_key_supplied = expected_public_key is not None
+    expected_public_key_matches: bool | None = None
     summary = _audit_attestation_summary(metadata)
     if summary is None:
         return {
@@ -772,10 +788,10 @@ def verify_audit_attestation_bundle(
             "signature_verified": False,
             "merkle_root_matches": False,
             "session_id_matches": False,
-            "expected_public_key_matches": False if expected_public_key_matches else None,
+            "expected_public_key_matches": False if expected_public_key_supplied else None,
             "verification_error": (
                 "session has no audit attestation to verify against provided public key"
-                if expected_public_key_matches
+                if expected_public_key_supplied
                 else None
             ),
         }
@@ -784,7 +800,7 @@ def verify_audit_attestation_bundle(
     if integrity is None:
         return _attestation_failure(
             summary,
-            expected_public_key_matches or None,
+            expected_public_key_matches,
             "session has audit attestation metadata but no audit integrity summary",
         )
 
@@ -795,7 +811,7 @@ def verify_audit_attestation_bundle(
         if predicate_type != AUDIT_ATTESTATION_PREDICATE_TYPE_ALPHA:
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "wrong bundle type: "
                 f"expected {AUDIT_ATTESTATION_PREDICATE_TYPE_ALPHA}, got {predicate_type}",
             )
@@ -803,14 +819,14 @@ def verify_audit_attestation_bundle(
         if not isinstance(predicate, Mapping):
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation predicate is not an object",
             )
         signer = predicate.get("signer")
         if not isinstance(signer, Mapping) or signer.get("kind") != "keyed":
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation must be keyed",
             )
         signer_key_id = signer.get("key_id") or parsed.verification_material.public_key.hint
@@ -820,29 +836,31 @@ def verify_audit_attestation_bundle(
         if recomputed_key_id != summary["key_id"]:
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation metadata key mismatch: "
                 f"expected {summary['key_id']}, got {recomputed_key_id}",
             )
         if signer_key_id != summary["key_id"]:
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation signer key mismatch: "
                 f"expected {summary['key_id']}, got {signer_key_id}",
             )
-        if expected_public_key is not None and _load_public_key_der(expected_public_key) != public_key_der:
-            return _attestation_failure(
-                summary,
-                False,
-                "provided public key does not match the attested signer key",
-            )
+        if expected_public_key is not None:
+            expected_public_key_matches = _load_public_key_der(expected_public_key) == public_key_der
+            if not expected_public_key_matches:
+                return _attestation_failure(
+                    summary,
+                    False,
+                    "provided public key does not match the attested signer key",
+                )
 
         envelope = parsed.dsse_envelope
         if not envelope.signatures:
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation DSSE envelope has no signatures",
             )
         payload = _b64_decode_flexible(envelope.payload)
@@ -857,7 +875,7 @@ def verify_audit_attestation_bundle(
         if not isinstance(subjects, list) or not subjects:
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation statement has no subjects",
             )
         first_subject = subjects[0]
@@ -866,18 +884,40 @@ def verify_audit_attestation_bundle(
         if attested_root != _hash_hex(integrity["merkle_root"]):
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation Merkle root does not match session integrity summary",
             )
-        if predicate.get("session_id") != _metadata_to_dict(metadata)["session_id"]:
+        meta = _metadata_to_dict(metadata)
+        if predicate.get("session_id") != meta["session_id"]:
             return _attestation_failure(
                 summary,
-                expected_public_key_matches or None,
+                expected_public_key_matches,
                 "audit attestation session_id mismatch: "
-                f"expected {_metadata_to_dict(metadata)['session_id']}, got {predicate.get('session_id')}",
+                f"expected {meta['session_id']}, got {predicate.get('session_id')}",
+            )
+
+        audit_log = predicate.get("audit_log")
+        if not isinstance(audit_log, Mapping):
+            return _attestation_failure(
+                summary,
+                expected_public_key_matches,
+                "audit attestation predicate missing audit_log",
+            )
+        for field in ("hash_algorithm", "event_count", "chain_head"):
+            if audit_log.get(field) != integrity[field]:
+                return _attestation_failure(
+                    summary,
+                    expected_public_key_matches,
+                    f"audit attestation {field} does not match session integrity summary",
+                )
+        if predicate.get("started") != meta["started"] or predicate.get("ended") != meta["ended"]:
+            return _attestation_failure(
+                summary,
+                expected_public_key_matches,
+                "audit attestation timestamps do not match session metadata",
             )
     except (KeyError, TypeError, ValueError, VerificationError) as e:
-        return _attestation_failure(summary, expected_public_key_matches or None, str(e))
+        return _attestation_failure(summary, expected_public_key_matches, str(e))
 
     return {
         "present": True,
@@ -887,7 +927,7 @@ def verify_audit_attestation_bundle(
         "signature_verified": True,
         "merkle_root_matches": True,
         "session_id_matches": True,
-        "expected_public_key_matches": True if expected_public_key_matches else None,
+        "expected_public_key_matches": expected_public_key_matches,
         "verification_error": None,
     }
 
@@ -911,7 +951,7 @@ def verify_audit_attestation(
     if not bundle_path.exists():
         return _attestation_failure(
             summary,
-            (expected_public_key is not None) or None,
+            None,
             f"missing audit attestation bundle: {bundle_path}",
         )
     try:
@@ -919,7 +959,7 @@ def verify_audit_attestation(
     except OSError as e:
         return _attestation_failure(
             summary,
-            (expected_public_key is not None) or None,
+            None,
             f"failed to read audit attestation bundle: {e}",
         )
     return verify_audit_attestation_bundle(
